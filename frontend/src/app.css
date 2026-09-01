@@ -1,0 +1,311 @@
+@import "tailwindcss";
+
+/*
+ * ─────────────────────────────────────────────────────────────────────
+ *  Design tokens — refreshed to a shadcn/ui-inspired palette:
+ *    - Near-black zinc background, subtle layered surfaces
+ *    - Single accent family per metric (saturated but not neon)
+ *    - Same accent hex values in both modes; only chrome swaps
+ *  Light mode overrides live under [data-theme="light"] below.
+ * ─────────────────────────────────────────────────────────────────────
+ */
+@theme {
+  /* Surfaces */
+  --color-bg-primary: #09090b;      /* zinc-950 */
+  --color-bg-card: #18181b;         /* zinc-900 */
+  --color-bg-sidebar: #0c0c0f;      /* slightly darker than primary */
+  --color-bg-hover: #27272a;        /* zinc-800 */
+  --color-bg-header: #0c0c0f;       /* legacy alias */
+
+  /* Borders */
+  --color-border: #27272a;          /* zinc-800 */
+  --color-border-strong: #3f3f46;   /* zinc-700 */
+
+  /* Text */
+  --color-text-primary: #fafafa;    /* zinc-50 */
+  --color-text-secondary: #a1a1aa;  /* zinc-400 */
+  --color-text-muted: #52525b;      /* zinc-600 */
+
+  /* Chart chrome (grid lines + axis labels) */
+  --color-chart-grid: #27272a;
+  --color-chart-axis: #71717a;
+
+  /* Foreground color to use on top of saturated accent backgrounds (e.g. the
+     active `bg-cpu` tab). Always white in practice since accent hues are
+     all mid-tone blues/greens/etc. — explicit token for clarity. */
+  --color-accent-fg: #ffffff;
+
+  /* Backdrop scrim used behind mobile drawers. Held at a fixed alpha
+     so the overlay reads the same in both themes (scrims always darken). */
+  --color-scrim: rgb(0 0 0 / 0.5);
+
+  /* Semantic accents — designed for AA contrast on both modes */
+  --color-cpu: #3b82f6;             /* blue-500 */
+  --color-cpu-p: #60a5fa;           /* blue-400 */
+  --color-cpu-e: #38bdf8;           /* sky-400  — distinct from blue */
+  --color-gpu: #10b981;             /* emerald-500 */
+  --color-memory: #f59e0b;          /* amber-500 */
+  --color-memory-swap: #fb923c;     /* orange-400 */
+  /* Deliberately dim/desaturated, not another vivid hue — this labels the
+     "Inactive" segment in the RAM detail breakdown, and needs to read as
+     dimmed-down memory, not compete with Active's amber-500. */
+  --color-memory-inactive: #78716c; /* stone-500 */
+  --color-disk: #06b6d4;            /* cyan-500 */
+  --color-disk-write: #2dd4bf;      /* teal-400 — distinct from cyan */
+  --color-power: #a78bfa;           /* violet-400 */
+  --color-power-cpu: #8b5cf6;       /* violet-500 */
+  --color-power-gpu: #e879f9;       /* fuchsia-400 — warm jump from violet */
+  --color-power-other: #fb7185;     /* rose-400  — warm tail */
+  --color-network-up: #34d399;      /* emerald-400 */
+  --color-network-down: #818cf8;    /* indigo-400 — distinct from blue-400 */
+  --color-temp-cpu: #ef4444;        /* red-500 — thermal */
+  --color-fan: #94a3b8;             /* slate-400 — neutral mechanical */
+  --color-danger: #ef4444;          /* red-500 */
+  --color-warning: #f59e0b;         /* amber-500 */
+}
+
+:root {
+  color-scheme: dark;
+
+  /*
+   * Explicit custom property declarations on :root ensure these tokens are
+   * always available to inline `style` attributes (including SVG stroke/fill)
+   * regardless of how the Tailwind `@theme` layer is emitted by the bundler.
+   * Values must stay in sync with the @theme block above.
+   */
+
+  /* Surfaces */
+  --color-bg-primary: #09090b;
+  --color-bg-card: #18181b;
+  --color-bg-sidebar: #0c0c0f;
+  --color-bg-hover: #27272a;
+  --color-bg-header: #0c0c0f;
+
+  /* Borders */
+  --color-border: #27272a;
+  --color-border-strong: #3f3f46;
+
+  /* Text */
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #52525b;
+
+  /* Chart chrome */
+  --color-chart-grid: #27272a;
+  --color-chart-axis: #71717a;
+
+  /* Misc */
+  --color-accent-fg: #ffffff;
+  --color-scrim: rgb(0 0 0 / 0.5);
+
+  /* Semantic accents — dark mode defaults */
+  --color-cpu: #3b82f6;
+  --color-cpu-p: #60a5fa;
+  --color-cpu-e: #38bdf8;           /* sky-400 */
+  --color-gpu: #10b981;
+  --color-memory: #f59e0b;
+  --color-memory-swap: #fb923c;
+  --color-memory-inactive: #78716c; /* stone-500 */
+  --color-disk: #06b6d4;
+  --color-disk-write: #2dd4bf;      /* teal-400 */
+  --color-power: #a78bfa;
+  --color-power-cpu: #8b5cf6;
+  --color-power-gpu: #e879f9;       /* fuchsia-400 */
+  --color-power-other: #fb7185;     /* rose-400 */
+  --color-network-up: #34d399;
+  --color-network-down: #818cf8;    /* indigo-400 */
+  --color-temp-cpu: #ef4444;        /* red-500 */
+  --color-fan: #94a3b8;             /* slate-400 */
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surfaces — clean off-white stack */
+  --color-bg-primary: #ffffff;
+  --color-bg-card: #fafafa;         /* zinc-50 */
+  --color-bg-sidebar: #f4f4f5;      /* zinc-100 */
+  --color-bg-hover: #e4e4e7;        /* zinc-200 */
+  --color-bg-header: #f4f4f5;
+
+  /* Borders — crisp but subtle */
+  --color-border: #e4e4e7;          /* zinc-200 */
+  --color-border-strong: #d4d4d8;   /* zinc-300 */
+
+  /* Text — zinc-950 foreground against white */
+  --color-text-primary: #09090b;    /* zinc-950 */
+  --color-text-secondary: #52525b;  /* zinc-600 */
+  --color-text-muted: #a1a1aa;      /* zinc-400 */
+
+  /* Chart chrome */
+  --color-chart-grid: #e4e4e7;
+  --color-chart-axis: #71717a;
+
+  /* On-accent foreground — white still wins against blue-600, emerald-600,
+     violet-600 etc. (all WCAG AA). */
+  --color-accent-fg: #ffffff;
+
+  /* Scrim stays the same — still a darken overlay. A lighter scrim on
+     white backgrounds would wash out; 40–50% black is conventional for
+     both modes. */
+  --color-scrim: rgb(0 0 0 / 0.45);
+
+  /* Accents — deepened one step for contrast on white surfaces */
+  --color-cpu: #2563eb;             /* blue-600 */
+  --color-cpu-p: #3b82f6;
+  --color-cpu-e: #0ea5e9;           /* sky-500 */
+  --color-gpu: #059669;             /* emerald-600 */
+  --color-memory: #d97706;          /* amber-600 */
+  --color-memory-swap: #ea580c;     /* orange-600 */
+  --color-memory-inactive: #57534e; /* stone-600 — one step darker for white-bg contrast */
+  --color-disk: #0891b2;            /* cyan-600 */
+  --color-disk-write: #14b8a6;      /* teal-500 */
+  --color-power: #7c3aed;           /* violet-600 */
+  --color-power-cpu: #6d28d9;       /* violet-700 */
+  --color-power-gpu: #c026d3;       /* fuchsia-600 */
+  --color-power-other: #e11d48;     /* rose-600 */
+  --color-network-up: #059669;
+  --color-network-down: #4f46e5;    /* indigo-600 */
+  --color-temp-cpu: #dc2626;        /* red-600 */
+  --color-fan: #64748b;             /* slate-500 */
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI',
+    system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Chart cells are display-only. Disable user selection and kill the
+ * default browser focus outline on recharts <svg>s (which rendered as
+ * a jagged box clipping outside the rounded cell).
+ */
+.chart-cell,
+.chart-cell *,
+.chart-cell svg,
+.chart-cell svg * {
+  -webkit-user-select: none;
+  user-select: none;
+  outline: none !important;
+}
+.chart-cell :focus,
+.chart-cell :focus-visible,
+.chart-cell:focus,
+.chart-cell:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/*
+ * Scrollbars — slim, muted, theme-aware. Firefox uses `scrollbar-*`;
+ * WebKit/Blink uses the pseudo elements.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--color-text-secondary) 40%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklch, var(--color-text-secondary) 30%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklch, var(--color-text-secondary) 55%, transparent);
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.thin-scroll {
+  scrollbar-width: thin;
+}
+.thin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklch, var(--color-text-secondary) 25%, transparent);
+  border: 1px solid transparent;
+}
+.thin-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklch, var(--color-text-secondary) 45%, transparent);
+}
+
+/* Hide scrollbar for the mobile metric strip while keeping scroll behaviour. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Overlay panel entrance.
+ *
+ * A very short rise-and-settle, not a slide: the panel appears centred over the
+ * dashboard, so movement from an edge would imply it came from somewhere it
+ * didn't. 120ms is long enough to read as "this opened" and short enough that
+ * it never delays the content.
+ */
+@keyframes overlay-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.overlay-panel {
+  animation: overlay-in 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Motion here is decorative — the panel is fully usable without it. */
+@media (prefers-reduced-motion: reduce) {
+  .overlay-panel { animation: none; }
+}
+
+/*
+  Touch hold-and-fade for the shared hover readout.
+
+  `store/hover-store.ts` owns the timing and publishes the phase as
+  `data-hover-fading` on `<html>`, along with `--hover-fade-ms` so the duration
+  has one owner. Driving the fade from an attribute rather than from React
+  state is the point: the alternative re-renders six AreaCharts mid-gesture,
+  which is the exact cost `ChartHoverEcho` exists to avoid.
+
+  Both marks fade together — Recharts' own tooltip on the card the finger was
+  on, and the echoes on the other five — because they are one readout wearing
+  two strengths, and staggering them would read as a bug.
+*/
+.recharts-tooltip-wrapper,
+[data-overlay='hover-echo'] {
+  transition: opacity var(--hover-fade-ms, 500ms) ease-out;
+}
+
+[data-hover-fading='true'] .recharts-tooltip-wrapper,
+[data-hover-fading='true'] [data-overlay='hover-echo'] {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recharts-tooltip-wrapper,
+  [data-overlay='hover-echo'] {
+    transition: none;
+  }
+}

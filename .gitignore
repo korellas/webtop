@@ -1,0 +1,19 @@
+/target
+/frontend/node_modules
+/frontend/dist
+.superpowers/
+
+# SQLite metrics store (+ WAL sidecars)
+*.db
+*.db-wal
+*.db-shm
+
+# Claude Code local tooling (worktrees, local settings)
+.claude/
+
+# OS / editor junk
+.DS_Store
+
+# Python (cat-asset generation scripts)
+__pycache__/
+*.pyc

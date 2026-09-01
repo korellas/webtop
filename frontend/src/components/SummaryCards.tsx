@@ -1,0 +1,263 @@
+import { useMetricsStore } from '../store/metrics-store';
+import { useSystemStore } from '../store/system-store';
+import { useDrawerStore, type CardKey, type AnchorPos } from '../store/drawer-store';
+import { formatGB, formatWatts, formatWh, formatMBps } from '../lib/format';
+import { COLORS } from '../lib/colors';
+import RingGauge from './RingGauge';
+
+/** 6 GB/s — approximate NVMe peak for a modern Apple Silicon Mac. */
+const DISK_IO_MAX_BYTES = 6 * 1024 * 1024 * 1024;
+
+/** Watts without unit suffix — for compact sub-line use. */
+const fmtW = (w: number) => (w < 10 ? w.toFixed(1) : String(Math.round(w)));
+
+/** Capture the anchor position from a click so the dropdown can point to this chip. */
+function captureAnchor(e: React.MouseEvent<HTMLButtonElement>): AnchorPos {
+  const rect = e.currentTarget.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, bottom: rect.bottom + 6 };
+}
+
+export default function SummaryCards() {
+  const latest = useMetricsStore((s) => s.snapshots[s.snapshots.length - 1]);
+  const info = useSystemStore((s) => s.info);
+
+  if (!latest || !info) {
+    return <div className="h-12 shrink-0" />;
+  }
+
+  const cpuTotal = latest.cpu_total;
+  const memPct = (latest.mem_used / info.mem_total) * 100;
+  const diskPct = info.disk_total > 0 ? (latest.disk_used / info.disk_total) * 100 : 0;
+  const powerPct = (latest.power_total_w / 400) * 100;
+
+  const linkSpeed = info.net_link_speed_bytes_sec ?? 125_000_000;
+  const netTotalBytes = latest.net_up_bytes_sec + latest.net_down_bytes_sec;
+  const netPct = Math.min((netTotalBytes / linkSpeed) * 100, 100);
+
+  const diskIoPct = Math.min(
+    (Math.max(latest.disk_read_bytes_sec, latest.disk_write_bytes_sec) / DISK_IO_MAX_BYTES) * 100,
+    100,
+  );
+
+  const energyPct = Math.min((latest.energy_session_wh / 5000) * 100, 100);
+  const prevMonthWh = latest.energy_prev_month_wh ?? 0;
+
+  return (
+    <div
+      /*
+        The strip scrolls below `lg`, where the chips cannot all fit. It used
+        to scroll with `no-scrollbar` and no other mark, so the last visible
+        chip was sliced off at a hard edge and everything behind it was
+        undiscoverable: a cut card reads as a layout bug, not as an invitation.
+        The right-edge fade is the standard affordance and costs no height,
+        which this layout has none of to give. From `lg` up the chips are
+        `flex-1` and fill the row, so there is nothing to fade.
+      */
+      className="
+        flex gap-1.5 overflow-x-auto no-scrollbar shrink-0 pb-0.5
+        [mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)]
+        lg:[mask-image:none]
+      "
+    >
+      <MiniChip
+        card="cpu"
+        label="CPU"
+        value={`${Math.round(cpuTotal)}%`}
+        sub={`P${Math.round(latest.cpu_p_cores)}% E${Math.round(latest.cpu_e_cores)}%`}
+        gauge={<RingGauge value={cpuTotal} color={COLORS.cpu} size={30} strokeWidth={2.5} />}
+      />
+      {/* GPU — non-clickable: no drill-down view worth showing (unified memory, no VRAM). */}
+      <MiniChip
+        label="GPU"
+        value={`${latest.gpu_usage < 10 ? latest.gpu_usage.toFixed(1) : Math.round(latest.gpu_usage)}%`}
+        sub={`${info.gpu_core_count}-core`}
+        gauge={<RingGauge value={latest.gpu_usage} color={COLORS.gpu} size={30} strokeWidth={2.5} />}
+      />
+      <MiniChip
+        card="ram"
+        label="RAM"
+        value={`${memPct.toFixed(0)}%`}
+        sub={formatGB(latest.mem_used, 1)}
+        gauge={<RingGauge value={memPct} color={COLORS.memory} size={30} strokeWidth={2.5} />}
+      />
+      <MiniChip
+        card="disk"
+        label="Disk"
+        value={`${diskPct.toFixed(0)}%`}
+        sub={formatGB(latest.disk_used, 0)}
+        gauge={<RingGauge value={diskPct} color={COLORS.disk} size={30} strokeWidth={2.5} />}
+      />
+      <MiniDualChip
+        card="net"
+        label="Net"
+        gauge={<RingGauge value={netPct} color={COLORS.networkDown} size={30} strokeWidth={2.5} />}
+        rows={[
+          { icon: '▲', color: COLORS.networkUp, value: formatMBps(latest.net_up_bytes_sec) },
+          { icon: '▼', color: COLORS.networkDown, value: formatMBps(latest.net_down_bytes_sec) },
+        ]}
+      />
+      {/* I/O — non-clickable: drilling down would duplicate the Disk drawer. */}
+      <MiniDualChip
+        label="I/O"
+        gauge={<RingGauge value={diskIoPct} color={COLORS.disk} size={30} strokeWidth={2.5} />}
+        rows={[
+          { icon: 'R', color: COLORS.disk, value: formatMBps(latest.disk_read_bytes_sec) },
+          { icon: 'W', color: COLORS.diskWrite, value: formatMBps(latest.disk_write_bytes_sec) },
+        ]}
+      />
+      <MiniChip
+        card="power"
+        label="Power"
+        value={formatWatts(latest.power_total_w)}
+        // Prefixed, like the CPU chip's `P3% E18%`. Three bare numbers under a
+        // chip labelled "Power" name nothing: `5.2 54 100` could be anything.
+        sub={`C${fmtW(latest.power_cpu_w)} G${fmtW(latest.power_gpu_w)} O${fmtW(latest.power_other_w)}`}
+        gauge={<RingGauge value={powerPct} color={COLORS.power} size={30} strokeWidth={2.5} />}
+      />
+      <MiniChip
+        card="energy"
+        label="Energy"
+        value={formatWh(latest.energy_session_wh)}
+        sub={prevMonthWh > 0 ? `prev ${formatWh(prevMonthWh)}` : 'this month'}
+        gauge={<RingGauge value={energyPct} color={COLORS.power} size={30} strokeWidth={2.5} />}
+      />
+    </div>
+  );
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+/**
+ * Shared class names for both the clickable and non-clickable chip variants
+ * so they stay visually identical apart from the interactive affordances.
+ */
+const CHIP_BASE =
+  'flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border border-border rounded-lg flex-1 min-w-[144px]';
+// 144, not 108: the 30 px gauge, the gaps and `px-3` leave the text column
+// whatever remains, and at 108 that was 47 px — enough for the value but not
+// for any sub-line, so `P2% E22%`, the power split and `prev 18.43 kWh` were
+// all truncated at every width below `lg`. The widest sub measures 77 px.
+const CHIP_INTERACTIVE =
+  'hover:bg-bg-hover hover:border-border-strong active:scale-[0.98] transition-[background-color,border-color,transform] duration-150 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong';
+
+function MiniChip({
+  card,
+  label,
+  value,
+  sub,
+  gauge,
+}: {
+  /** Omit to render as a non-clickable display chip. */
+  card?: CardKey;
+  label: string;
+  value: string;
+  sub?: string;
+  gauge?: React.ReactNode;
+}) {
+  const toggle = useDrawerStore((s) => s.toggle);
+  const openCard = useDrawerStore((s) => s.openCard);
+
+  const content = (
+    <>
+      {gauge}
+      <div className="text-right min-w-0">
+        <div className="text-[10px] uppercase tracking-wider text-text-secondary leading-none mb-1">
+          {label}
+        </div>
+        <div className="text-[12px] font-bold tabular-nums leading-tight">{value}</div>
+        {sub && (
+          <div
+            title={sub}
+            className="text-[10px] text-text-secondary tabular-nums leading-tight truncate"
+          >
+            {sub}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  if (!card) {
+    return <div className={`${CHIP_BASE} text-left`}>{content}</div>;
+  }
+
+  const isActive = openCard === card;
+  return (
+    <button
+      type="button"
+      aria-label={`Open ${label} detail`}
+      aria-expanded={isActive}
+      onClick={(e) => toggle(card, captureAnchor(e))}
+      className={`${CHIP_BASE} ${CHIP_INTERACTIVE} text-left ${
+        isActive ? 'bg-bg-hover border-border-strong' : ''
+      }`}
+    >
+      {content}
+    </button>
+  );
+}
+
+function MiniDualChip({
+  card,
+  label,
+  rows,
+  gauge,
+}: {
+  card?: CardKey;
+  label: string;
+  rows: Array<{ icon: string; color: string; value: string }>;
+  gauge?: React.ReactNode;
+}) {
+  const toggle = useDrawerStore((s) => s.toggle);
+  const openCard = useDrawerStore((s) => s.openCard);
+
+  const content = (
+    <>
+      {gauge}
+      <div className="text-right">
+        <div className="text-[10px] uppercase tracking-wider text-text-secondary leading-none mb-1">
+          {label}
+        </div>
+        {rows.map((row, i) => {
+          // Split "1.300 MB/s" → num="1.300" unit="MB/s" so the unit never shifts
+          const spaceIdx = row.value.indexOf(' ');
+          const num = spaceIdx >= 0 ? row.value.slice(0, spaceIdx) : row.value;
+          const unit = spaceIdx >= 0 ? row.value.slice(spaceIdx + 1) : '';
+          return (
+            <div key={i} className="flex items-center justify-end gap-0.5">
+              <span
+                className="text-[10px] font-semibold w-2.5 text-center shrink-0"
+                style={{ color: row.color }}
+              >
+                {row.icon}
+              </span>
+              <span className="text-[11px] font-bold tabular-nums leading-tight inline-block text-right min-w-[3.2em]">
+                {num}
+              </span>
+              <span className="text-[9px] text-text-secondary leading-tight shrink-0">{unit}</span>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  if (!card) {
+    return <div className={`${CHIP_BASE} text-left`}>{content}</div>;
+  }
+
+  const isActive = openCard === card;
+  return (
+    <button
+      type="button"
+      aria-label={`Open ${label} detail`}
+      aria-expanded={isActive}
+      onClick={(e) => toggle(card, captureAnchor(e))}
+      className={`${CHIP_BASE} ${CHIP_INTERACTIVE} text-left ${
+        isActive ? 'bg-bg-hover border-border-strong' : ''
+      }`}
+    >
+      {content}
+    </button>
+  );
+}

@@ -1,0 +1,24 @@
+[package]
+name = "webtop"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = "0.34"
+rusqlite = { version = "0.32", features = ["bundled"] }
+rust-embed = "8"
+tower-http = { version = "0.6", features = ["cors", "compression-gzip"] }
+tower = "0.5"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+mime_guess = "2"
+clap = { version = "4", features = ["derive"] }
+macmon = "0.7"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+if-addrs = "0.13"
+libc = "0.2"

@@ -1,0 +1,11 @@
+pub mod battery;
+pub mod disks;
+pub mod fan;
+pub mod folder_sizes;
+pub mod footprint;
+pub mod gpu_procs;
+pub mod mem_breakdown;
+pub mod metrics;
+pub mod net_interfaces;
+pub mod processes;
+pub mod snapshot;

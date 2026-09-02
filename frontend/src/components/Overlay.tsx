@@ -30,7 +30,7 @@ interface Props {
  * for a name that needs 112 — comfortable without turning the remainder into
  * gutter the eye has to cross.
  */
-const PANEL_WIDTH = 'min(92vw, 800px)';
+const PANEL_WIDTH = 'min(calc(92dvw / var(--ui-zoom, 1)), 800px)';
 
 /**
  * Large sliding panel over the dashboard.
@@ -87,8 +87,8 @@ export default function Overlay({
         style={{
           width: PANEL_WIDTH,
           ...(height === 'fill'
-            ? { height: 'min(74vh, 620px)' }
-            : { maxHeight: 'min(74vh, 620px)' }),
+            ? { height: 'min(calc(74dvh / var(--ui-zoom, 1)), 620px)' }
+            : { maxHeight: 'min(calc(74dvh / var(--ui-zoom, 1)), 620px)' }),
         }}
         className="
           relative min-w-0 flex flex-col overlay-panel

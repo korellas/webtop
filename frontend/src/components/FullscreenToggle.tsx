@@ -31,6 +31,69 @@ function currentElement(): Element | null {
 }
 
 /**
+ * The width this interface's pixel sizes are drawn for, and the ceiling on
+ * how far it will scale past it.
+ *
+ * Going fullscreen used to hand the layout more room and nothing else: at
+ * 2560x1440 a chart cell grew from 855x289 to 1271x435 while every number,
+ * the chip strip and the status bar stayed the size they were. That is not
+ * what fullscreen is for. Fullscreen is for reading the thing from further
+ * away, and a dashboard that answers it with more empty plot has answered the
+ * wrong question.
+ *
+ * The scale comes from `screen.width`, not `innerWidth`, because `innerWidth`
+ * is reported in CSS pixels and therefore shrinks as the zoom it is being used
+ * to compute grows — reading it here would be a feedback loop.
+ */
+const DESIGN_WIDTH = 1440;
+const MAX_ZOOM = 2;
+
+/**
+ * Scale the whole interface up while fullscreen, and only while fullscreen.
+ *
+ * `zoom` rather than `transform: scale()`: zoom participates in layout, so the
+ * charts re-measure and redraw at their new size instead of being a bitmap
+ * stretched over more pixels. Every px in the design system scales with it,
+ * which is the point — the type scale, the 40px bar and the 30px gauges keep
+ * their relationships to each other and simply get bigger.
+ *
+ * Removed on exit, so nothing about a windowed session is changed by having
+ * once been fullscreen.
+ */
+function useFullscreenZoom(active: boolean) {
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!active) {
+      root.style.removeProperty('zoom');
+      root.style.removeProperty('--ui-zoom');
+      return;
+    }
+    const apply = () => {
+      const raw = window.screen.width / DESIGN_WIDTH;
+      const clamped = Math.min(MAX_ZOOM, Math.max(1, raw));
+      // Quantised, so a window nudge cannot reflow the whole grid over a
+      // difference nobody can see.
+      const z = Math.round(clamped * 20) / 20;
+      root.style.zoom = String(z);
+      // Viewport units do not know about zoom. `100dvh` under `zoom: 1.8`
+      // still resolves to the full viewport height *in zoomed pixels*, which
+      // renders 1.8x too tall — the first build of this scaled the dashboard
+      // beautifully and pushed the status bar and a whole chart row off the
+      // bottom of the screen. Anything sized against the viewport divides by
+      // this.
+      root.style.setProperty('--ui-zoom', String(z));
+    };
+    apply();
+    window.addEventListener('resize', apply);
+    return () => {
+      window.removeEventListener('resize', apply);
+      root.style.removeProperty('zoom');
+      root.style.removeProperty('--ui-zoom');
+    };
+  }, [active]);
+}
+
+/**
  * Fullscreen state, read from the browser rather than remembered.
  *
  * The button is never the only way out — Esc, F11 and the system window
@@ -89,6 +152,7 @@ function useFullscreen() {
  */
 export default function FullscreenToggle() {
   const { active, error, toggle } = useFullscreen();
+  useFullscreenZoom(active);
   const [supported] = useState(isSupported);
   if (!supported) return null;
 

@@ -173,15 +173,22 @@ function scrollToChart(label: string) {
  * so they stay visually identical apart from the interactive affordances.
  */
 const CHIP_BASE =
-  'flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border rounded-card flex-1 min-w-[156px]';
+  'flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border rounded-card flex-1 min-w-[160px]';
 // 152, and it is the sub-line that sets it. The gauge (30), the gaps (8) and
 // `px-3` (24) come off the top, so the text column gets whatever is left, and
 // the longest sub — `prev 18.43 kWh` — measures 92px at the 11px mono the type
-// scale gives it, so the box has to be 156. design-guide.md §3 fixes this at
+// scale gives it. design-guide.md §3 fixes this at
 // 144 on the basis of an 86px
 // sub, which is that same string at 10px sans; 144 truncated the energy and
 // power chips at every width below 1512. Raised rather than shrinking the type,
 // because the scale is the part with an accessibility floor under it.
+//
+// 160 and not 152, which is what the arithmetic alone gives: the two longest
+// subs are `prev 18.43 kWh` and a three-digit power split (`C136 G136 O136`),
+// both 14 characters, both 92px at 0.6em advance. Sizing the box to exactly
+// that leaves a boundary the live data crosses and re-crosses, so the chip
+// truncated intermittently rather than never. The extra 8px is the margin
+// that turns "fits today" into "fits".
 /**
  * Thresholds, from the token sheet. A chip past one changes its *border* and
  * nothing else.

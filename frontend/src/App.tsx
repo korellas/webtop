@@ -43,14 +43,26 @@ export default function App() {
       /*
         `index.html` asks for `viewport-fit=cover`, which grants the page the
         area under the notch, the rounded corners and the home indicator — and
-        obliges it to keep content out of them. Nothing did, so on a device with
-        insets the top of the chart grid and the bottom of the status bar sat
-        underneath hardware. Padding the column is enough; every inset resolves
-        to 0px where there is none, so this is inert on a desktop.
+        obliges it to keep content out of them. Nothing did, so on a device
+        with insets the top of the chart grid and the bottom of the status bar
+        sat underneath hardware.
+
+        The bottom inset is deliberately not here. Padding the column for it
+        lifts the status bar and leaves a band of page background beneath —
+        an empty strip that reads as a layout mistake, because it is one. The
+        bar owns that inset instead: it extends its own surface into it and
+        pads its content clear, which is what every platform bottom bar does.
+
+        Every inset resolves to 0px where there is none, so this is inert on
+        a desktop.
       */
+      // Height divides by the zoom factor for the reason spelled out in
+      // `FullscreenToggle`: `dvh` is not zoom-aware, so under zoom the
+      // unscaled `100dvh` renders taller than the screen it is meant to fit.
+      style={{ height: 'calc(100dvh / var(--ui-zoom, 1))' }}
       className="
-        h-dvh flex flex-col bg-bg-primary text-text-primary overflow-hidden
-        pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]
+        flex flex-col bg-bg-primary text-text-primary overflow-hidden
+        pt-[env(safe-area-inset-top)]
         pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]
       "
       {...HOVER_TOUCH_HANDLERS}

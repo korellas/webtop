@@ -18,6 +18,12 @@ import { formatBytes } from '../lib/format';
  * It also stays outside the overlay layer, so identity, connection state and
  * the selected timescale remain readable while a panel is open.
  *
+ * 40 px of content at every width, plus whatever the device reserves at the
+ * bottom — `box-content` so the padding extends the bar rather than eating
+ * into it. The bar's own surface covers the home-indicator strip; the
+ * alternative, padding the column above it, floats the bar on a band of page
+ * background.
+ *
  * 40 px and `px-3`, the same at every width. The bar previously ran at 24 px
  * on desktop with the navigation in a separate left rail; folding the rail in
  * means the content is full-bleed at every size, and the height the bar gained
@@ -31,8 +37,9 @@ export default function StatusBar() {
   return (
     <footer
       className="
-        shrink-0 z-50 h-10 flex items-center gap-2 sm:gap-3
-        px-2 sm:px-3 border-t border-border bg-bg-sidebar
+        shrink-0 z-50 h-10 box-content flex items-center gap-2 sm:gap-3
+        px-2 sm:px-3 pb-[env(safe-area-inset-bottom)]
+        border-t border-border bg-bg-sidebar
       "
     >
       <NavBar />

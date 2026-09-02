@@ -145,7 +145,7 @@ export default function DropdownPanel({
           // The bottom inset rides along with the bar it has to clear: the app
           // column is padded into the safe area, so the bar's floor is that
           // much higher than `100dvh` alone would suggest.
-          maxHeight: `calc(100dvh - ${panelTop + 16 + STATUS_BAR_HEIGHT}px - env(safe-area-inset-bottom))`,
+          maxHeight: `calc(100dvh / var(--ui-zoom, 1) - ${panelTop + 16 + STATUS_BAR_HEIGHT}px - env(safe-area-inset-bottom))`,
         }}
         className="
           fixed z-[90]

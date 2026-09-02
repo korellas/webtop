@@ -34,7 +34,7 @@ export interface SystemSnapshot {
   processes: ProcessInfo[];
   /**
    * Per-bucket `[min, max]` for the charted series. Present only on aggregated
-   * history rows; live samples omit it because a single 1-second reading is
+   * history rows; live samples omit it because a single point reading is
    * already its own extreme. See `attachBands` in `chart-utils`.
    */
   band?: MetricBand;

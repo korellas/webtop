@@ -5,6 +5,7 @@ import {
 import { COLORS } from '../../../lib/colors';
 import { formatBytes, formatMBps } from '../../../lib/format';
 import { fetchNetworkHistory } from '../../../lib/api';
+import { useNetworkPoll } from '../../../hooks/use-network-poll';
 import { useNetworkStore } from '../../../store/network-store';
 import { useMetricsStore } from '../../../store/metrics-store';
 import { useTimescaleStore } from '../../../store/timescale-store';
@@ -90,7 +91,7 @@ const KIND_LABELS: Record<NetInterfaceInfo['kind'], string> = {
 };
 
 export default function NetworkDetail({ onClose }: DetailProps) {
-  // Data is kept fresh by the app-level `useNetworkPoll` hook; we just read it.
+  useNetworkPoll();
   const interfaces = useNetworkStore((s) => s.interfaces);
   const loaded = useNetworkStore((s) => s.loaded);
   // Same figure the Network chart's Σ▲/Σ▼ pills show — kept fresh by

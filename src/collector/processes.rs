@@ -78,8 +78,8 @@ pub fn sample() -> Vec<PsRow> {
     // the first. `comm` is a path that can contain spaces, so it has to be the
     // last field — append `args=` after it and there is no way to tell where one
     // ends and the other begins. Asking for `pid=,args=` separately gives an
-    // unambiguous "PID, then rest of line" and costs one extra fork per tick,
-    // which is noise next to the ~1 s the macmon sampler already blocks for.
+    // unambiguous "PID, then rest of line" and costs one extra fork per process
+    // refresh. Process refreshes run less often than system snapshots.
     let cmds = sample_args();
     for r in &mut rows {
         if let Some(a) = cmds.get(&r.pid) {
@@ -94,7 +94,7 @@ pub fn sample() -> Vec<PsRow> {
     // fork behind it: 1.7 ms for all 907 processes on this machine, 585 of
     // them readable and the rest root-owned and falling back (measured
     // 2026-08-03 through ctypes, so an upper bound). The tick it sits in
-    // already blocks a full second in the macmon sampler.
+    // already includes the macmon sampling window.
     for r in &mut rows {
         r.mem_bytes = super::footprint::phys_footprint_or(r.pid, r.rss_kb.saturating_mul(1024));
     }

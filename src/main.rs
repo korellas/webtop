@@ -72,7 +72,6 @@ async fn main() {
     );
 
     spawn_collector(state.clone(), db.clone());
-    spawn_network_warmer();
     server::folder_scan::spawn_periodic(db, Arc::clone(&state.folder_scan));
 
     let app = Router::new()
@@ -153,25 +152,19 @@ async fn main() {
     }
 }
 
-/// Warm and keep warm the network-interface cache so `/api/network_interfaces`
-/// responds instantly even though `system_profiler SPAirPortDataType` is slow
-/// (2-3 s cold). The call shells out, so it runs on the blocking threadpool.
-///
-/// Refresh cadence matches the in-module 15 s Wi-Fi cache — we just ensure a
-/// call happens inside that window so the cache never goes stale from the
-/// perspective of API consumers.
-fn spawn_network_warmer() {
-    tokio::spawn(async {
-        // Prime immediately on boot.
-        let _ = tokio::task::spawn_blocking(|| crate::collector::net_interfaces::list_interfaces())
-            .await;
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            let _ =
-                tokio::task::spawn_blocking(|| crate::collector::net_interfaces::list_interfaces())
-                    .await;
-        }
-    });
+const ACTIVE_COLLECT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+const IDLE_COLLECT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn next_collector_delay(
+    has_live_clients: bool,
+    collection_elapsed: std::time::Duration,
+) -> std::time::Duration {
+    let interval = if has_live_clients {
+        ACTIVE_COLLECT_INTERVAL
+    } else {
+        IDLE_COLLECT_INTERVAL
+    };
+    interval.saturating_sub(collection_elapsed)
 }
 
 fn spawn_collector(state: Arc<AppState>, db: Arc<MetricsDb>) {
@@ -179,28 +172,25 @@ fn spawn_collector(state: Arc<AppState>, db: Arc<MetricsDb>) {
     // Run the collector on a dedicated OS thread and forward snapshots to an
     // async task via a channel.
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let activity_tx = state.broadcast_tx.clone();
 
     std::thread::spawn(move || {
         let mut collector = MetricsCollector::with_db(Some(db));
-        // The collector's internal macmon sampler already blocks for ~1 s per
-        // tick (longer sample windows give stable per-subsystem power); using
-        // that as our pacing keeps the cadence exact without the previous
-        // double-wait. On Intel Macs (no macmon sampler) we still need an
-        // explicit sleep as a fallback pacing source.
-        let sampler_paces = collector.sampler_is_active();
         loop {
+            let started = std::time::Instant::now();
             let snapshot = collector.collect();
             if tx.send(snapshot).is_err() {
                 break; // receiver dropped — main process is shutting down
             }
-            if !sampler_paces {
-                std::thread::sleep(std::time::Duration::from_secs(1));
+            let delay = next_collector_delay(activity_tx.receiver_count() > 0, started.elapsed());
+            if !delay.is_zero() {
+                std::thread::sleep(delay);
             }
         }
     });
 
     tokio::spawn(async move {
-        // Once per minute: fold closed rollup buckets, then prune to 7 days.
+        // Periodically fold closed rollup buckets, then prune to 7 days.
         let mut ticks: u64 = 0;
         while let Some(snapshot) = rx.recv().await {
             // Persist raw snapshot so history survives restarts.
@@ -232,4 +222,26 @@ fn spawn_collector(state: Arc<AppState>, db: Arc<MetricsDb>) {
             let _ = state.broadcast_tx.send(snapshot);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn collector_delay_preserves_active_and_idle_cadence() {
+        assert_eq!(
+            next_collector_delay(true, Duration::from_millis(1_250)),
+            Duration::from_millis(750)
+        );
+        assert_eq!(
+            next_collector_delay(false, Duration::from_millis(1_250)),
+            Duration::from_millis(3_750)
+        );
+        assert_eq!(
+            next_collector_delay(true, Duration::from_millis(2_500)),
+            Duration::ZERO
+        );
+    }
 }

@@ -50,13 +50,10 @@ pub async fn get_history(
     // a page refresh would show a sparser chart than the live-running one
     // — because live WebSocket samples fill in the finer grid, while
     // historical rows only cover one slot per minute.
-    // Bucket widths are sized against the collector's REAL cadence, which is
-    // ~2 s, not the 1 s the code comments long claimed. `collect()` blocks ~1 s
-    // inside `macmon::Sampler::get_metrics(1000)` and spends roughly another
-    // second refreshing sysinfo, enumerating processes and reading disk/network
-    // counters. Measured 2026-08-01: 29 rows in 60 s, inter-row gaps 1.99–2.16 s.
+    // Bucket widths are sized against the collector's 2 s active cadence.
+    // With no live clients the collector backs off, so idle history is sparser.
     //
-    // This matters because a bucket narrower than ~2× the sample period holds a
+    // This matters because a bucket narrower than ~2× the active sample period holds a
     // single row, so `AVG`/`MIN`/`MAX` all collapse to that one value: no
     // aggregation happens, the chart draws raw sample-to-sample noise, and the
     // min/max band is zero-width. The 5 m view was the visible symptom — 2 s

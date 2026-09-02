@@ -1,6 +1,9 @@
 //! Network interface enumeration: name, IPs, MAC, link speed, per-iface traffic,
 //! plus Wi-Fi specifics (SSID, RSSI, channel, tx rate) for wireless interfaces.
 
+use objc2_core_foundation::{CFArray, CFRetained};
+use objc2_core_wlan::{CWSecurity, CWWiFiClient};
+use objc2_system_configuration::SCNetworkInterface;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::process::Command;
@@ -92,37 +95,7 @@ fn sampler() -> &'static Mutex<NetSampler> {
     SAMPLER.get_or_init(|| Mutex::new(NetSampler::new()))
 }
 
-/// Device → human-readable hardware port name, populated once at first call
-/// from `networksetup -listallhardwareports`. Lets us correctly distinguish
-/// Wi-Fi vs Ethernet regardless of `en` numbering.
-static HW_PORTS: std::sync::OnceLock<HashMap<String, String>> = std::sync::OnceLock::new();
-
-fn hw_ports() -> &'static HashMap<String, String> {
-    HW_PORTS.get_or_init(|| {
-        let mut map = HashMap::new();
-        if let Ok(out) = Command::new("networksetup")
-            .arg("-listallhardwareports")
-            .output()
-        {
-            if out.status.success() {
-                let text = String::from_utf8_lossy(&out.stdout);
-                let mut current_port: Option<String> = None;
-                for line in text.lines() {
-                    if let Some(rest) = line.strip_prefix("Hardware Port: ") {
-                        current_port = Some(rest.trim().to_string());
-                    } else if let Some(rest) = line.strip_prefix("Device: ") {
-                        if let Some(port) = current_port.take() {
-                            map.insert(rest.trim().to_string(), port);
-                        }
-                    }
-                }
-            }
-        }
-        map
-    })
-}
-
-/// Wi-Fi info is slow to query (shells out to system_profiler). Cache for 15s.
+/// Wi-Fi association details change slowly. Cache them for 15s.
 struct WifiCache {
     info: Option<WirelessInfo>,
     iface: Option<String>,
@@ -150,6 +123,7 @@ pub fn list_interfaces() -> Vec<NetInterfaceInfo> {
         }
     }
 
+    let native_metadata = native_interface_metadata();
     let ifconfig = Command::new("ifconfig").output().ok();
     let if_text = ifconfig
         .as_ref()
@@ -185,13 +159,18 @@ pub fn list_interfaces() -> Vec<NetInterfaceInfo> {
                 return None;
             }
             let info = ifconfig_map.get(name).cloned().unwrap_or_default();
+            let native = native_metadata.get(name);
             if !info.is_up {
                 return None;
             }
             let (rx, tx) = rates.get(name).copied().unwrap_or((0, 0));
             Some(NetInterfaceInfo {
-                kind: classify(name),
-                mac: info.mac.clone(),
+                kind: native
+                    .and_then(|metadata| metadata.kind)
+                    .unwrap_or_else(|| classify_name_fallback(name)),
+                mac: native
+                    .and_then(|metadata| metadata.mac.clone())
+                    .or_else(|| info.mac.clone()),
                 link_speed_bps: info.link_speed_bps,
                 mtu: info.mtu,
                 is_up: info.is_up,
@@ -232,6 +211,57 @@ pub fn list_interfaces() -> Vec<NetInterfaceInfo> {
     out
 }
 
+#[derive(Default)]
+struct NativeInterfaceMetadata {
+    mac: Option<String>,
+    kind: Option<&'static str>,
+}
+
+fn native_interface_metadata() -> HashMap<String, NativeInterfaceMetadata> {
+    let interfaces = SCNetworkInterface::all();
+    // SAFETY: SCNetworkInterfaceCopyAll documents every array entry as an
+    // SCNetworkInterface reference.
+    let interfaces: CFRetained<CFArray<SCNetworkInterface>> =
+        unsafe { CFRetained::cast_unchecked(interfaces) };
+    interfaces
+        .iter()
+        .filter_map(|interface| {
+            let name = interface.bsd_name()?.to_string();
+            let interface_type = interface
+                .interface_type()
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            let display_name = interface
+                .localized_display_name()
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            Some((
+                name,
+                NativeInterfaceMetadata {
+                    mac: interface
+                        .hardware_address_string()
+                        .map(|value| value.to_string()),
+                    kind: classify_sc_interface(&interface_type, &display_name),
+                },
+            ))
+        })
+        .collect()
+}
+
+fn classify_sc_interface(interface_type: &str, display_name: &str) -> Option<&'static str> {
+    let haystack = format!("{interface_type} {display_name}").to_ascii_lowercase();
+    if haystack.contains("ieee80211") || haystack.contains("wi-fi") || haystack.contains("airport")
+    {
+        Some("wifi")
+    } else if haystack.contains("ethernet") || haystack.contains("lan") {
+        Some("ethernet")
+    } else if haystack.contains("bridge") || haystack.contains("thunderbolt") {
+        Some("bridge")
+    } else {
+        None
+    }
+}
+
 fn kind_rank(kind: &str) -> u8 {
     match kind {
         "wifi" => 0,
@@ -250,7 +280,7 @@ fn cached_wifi_info(iface: &str) -> Option<WirelessInfo> {
             return cache.info.clone();
         }
     }
-    let info = fetch_wifi_info(iface);
+    let info = native_wifi_info(iface).or_else(|| fetch_wifi_info_fallback(iface));
     *guard = Some(WifiCache {
         info: info.clone(),
         iface: Some(iface.to_string()),
@@ -259,9 +289,85 @@ fn cached_wifi_info(iface: &str) -> Option<WirelessInfo> {
     info
 }
 
+fn native_wifi_info(iface: &str) -> Option<WirelessInfo> {
+    // SAFETY: CoreWLAN owns the shared client and the binding retains every
+    // returned Objective-C object for the duration of this function.
+    let client = unsafe { CWWiFiClient::sharedWiFiClient() };
+    let interfaces = unsafe { client.interfaces()? };
+    let interface = interfaces.to_vec().into_iter().find(|candidate| {
+        unsafe { candidate.interfaceName() }
+            .map(|name| name.to_string() == iface)
+            .unwrap_or(false)
+    })?;
+
+    let ssid = unsafe { interface.ssid() }
+        .map(|v| v.to_string())
+        .filter(|v| !v.is_empty() && !v.contains("redacted"));
+    let bssid = unsafe { interface.bssid() }
+        .map(|v| v.to_string())
+        .filter(|v| !v.is_empty() && !v.contains("redacted"));
+    let channel = unsafe { interface.wlanChannel() }
+        .map(|v| unsafe { v.channelNumber() })
+        .filter(|v| *v > 0)
+        .map(|v| v as u32);
+    let rssi_dbm = match unsafe { interface.rssiValue() } as i32 {
+        0 => None,
+        v => Some(v),
+    };
+    let noise_dbm = match unsafe { interface.noiseMeasurement() } as i32 {
+        0 => None,
+        v => Some(v),
+    };
+    let tx_rate = unsafe { interface.transmitRate() };
+    let tx_rate_mbps = (tx_rate.is_finite() && tx_rate > 0.0).then(|| tx_rate.round() as u32);
+    let security = security_label(unsafe { interface.security() });
+
+    Some(WirelessInfo {
+        ssid,
+        bssid,
+        channel,
+        band: channel.map(channel_to_band),
+        rssi_dbm,
+        noise_dbm,
+        tx_rate_mbps,
+        security,
+    })
+}
+
+fn security_label(security: CWSecurity) -> Option<String> {
+    let label = if security == CWSecurity::None {
+        "Open"
+    } else if security == CWSecurity::WEP || security == CWSecurity::DynamicWEP {
+        "WEP"
+    } else if security == CWSecurity::WPAPersonal {
+        "WPA Personal"
+    } else if security == CWSecurity::WPAPersonalMixed {
+        "WPA/WPA2 Personal"
+    } else if security == CWSecurity::WPA2Personal || security == CWSecurity::Personal {
+        "WPA2 Personal"
+    } else if security == CWSecurity::WPA3Personal {
+        "WPA3 Personal"
+    } else if security == CWSecurity::WPA3Transition {
+        "WPA2/WPA3 Personal"
+    } else if security == CWSecurity::WPAEnterprise {
+        "WPA Enterprise"
+    } else if security == CWSecurity::WPAEnterpriseMixed {
+        "WPA/WPA2 Enterprise"
+    } else if security == CWSecurity::WPA2Enterprise || security == CWSecurity::Enterprise {
+        "WPA2 Enterprise"
+    } else if security == CWSecurity::WPA3Enterprise {
+        "WPA3 Enterprise"
+    } else if security == CWSecurity::OWE || security == CWSecurity::OWETransition {
+        "Enhanced Open"
+    } else {
+        return None;
+    };
+    Some(label.into())
+}
+
 /// Query `system_profiler SPAirPortDataType -json` for the currently-associated
 /// network on the given interface. Returns `None` if not on Wi-Fi.
-fn fetch_wifi_info(iface: &str) -> Option<WirelessInfo> {
+fn fetch_wifi_info_fallback(iface: &str) -> Option<WirelessInfo> {
     let out = Command::new("system_profiler")
         .args(["SPAirPortDataType", "-json", "-detailLevel", "basic"])
         .output()
@@ -441,23 +547,7 @@ fn parse_media_speed(line: &str) -> Option<u64> {
     }
 }
 
-fn classify(name: &str) -> &'static str {
-    // Look up the hardware port from `networksetup`. This is authoritative —
-    // it tells us whether `en0` is Wi-Fi or Ethernet regardless of ordering.
-    if let Some(port) = hw_ports().get(name) {
-        let lower = port.to_ascii_lowercase();
-        if lower.contains("wi-fi") || lower.contains("airport") || lower.contains("wireless") {
-            return "wifi";
-        }
-        if lower.contains("ethernet") || lower.contains("lan") {
-            return "ethernet";
-        }
-        if lower.contains("thunderbolt") || lower.contains("bridge") {
-            return "bridge";
-        }
-    }
-
-    // Name-based fallback for interfaces networksetup doesn't report on.
+fn classify_name_fallback(name: &str) -> &'static str {
     if name == "lo0" || name.starts_with("lo") {
         "loopback"
     } else if name.starts_with("bridge") {
@@ -470,5 +560,35 @@ fn classify(name: &str) -> &'static str {
         "ethernet"
     } else {
         "other"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_sc_interface, security_label};
+    use objc2_core_wlan::CWSecurity;
+
+    #[test]
+    fn native_wifi_security_has_stable_labels() {
+        assert_eq!(security_label(CWSecurity::None), Some("Open".into()));
+        assert_eq!(
+            security_label(CWSecurity::WPA3Transition),
+            Some("WPA2/WPA3 Personal".into())
+        );
+        assert_eq!(security_label(CWSecurity::Unknown), None);
+    }
+
+    #[test]
+    fn system_configuration_types_map_to_ui_kinds() {
+        assert_eq!(classify_sc_interface("IEEE80211", "Wi-Fi"), Some("wifi"));
+        assert_eq!(
+            classify_sc_interface("Ethernet", "USB 10/100/1000 LAN"),
+            Some("ethernet")
+        );
+        assert_eq!(
+            classify_sc_interface("Bridge", "Thunderbolt Bridge"),
+            Some("bridge")
+        );
+        assert_eq!(classify_sc_interface("Unknown", "Unknown"), None);
     }
 }

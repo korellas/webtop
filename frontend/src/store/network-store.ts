@@ -2,10 +2,9 @@ import { create } from 'zustand';
 import type { NetInterfaceInfo } from '../lib/types';
 
 /**
- * Cached network interface list — populated by `useNetworkPoll()` which
- * runs from `App.tsx` from the moment the page loads. This means the
- * NetworkDetail drawer has data ready to render the instant the user
- * opens it; no per-open fetch, no spinner.
+ * Cached network interface list populated while the Network drawer is open.
+ * Keeping the last result avoids a blank drawer on subsequent opens without
+ * polling in the background.
  */
 interface NetworkState {
   interfaces: NetInterfaceInfo[] | null;

@@ -1,186 +1,260 @@
 @import "tailwindcss";
 
 /*
+ * Self-hosted IBM Plex — latin subsets, four faces, ~80 KB total.
+ *
+ * Not a CDN. This is a LAN tool: a webtop that falls back to system fonts the
+ * moment the machine it monitors loses its uplink is a webtop whose typography
+ * is a function of the network. `public/` is copied into `dist/`, which
+ * `build.rs` embeds, so the binary carries its own faces.
+ *
+ * `swap` rather than `block`: the numbers matter more than the shapes they
+ * arrive in, and a dashboard that shows nothing for 100 ms on load is worse
+ * than one that reflows once.
+ */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+}
+
+/*
  * ─────────────────────────────────────────────────────────────────────
- *  Design tokens — refreshed to a shadcn/ui-inspired palette:
- *    - Near-black zinc background, subtle layered surfaces
- *    - Single accent family per metric (saturated but not neon)
- *    - Same accent hex values in both modes; only chrome swaps
- *  Light mode overrides live under [data-theme="light"] below.
+ *  Design tokens — Webtop Design v2.
+ *
+ *  `frontend/docs/design-guide.md` is the spec of record; this file is the
+ *  implementation of its §1 (colour), §2 (type), §3 (spacing/radius) and
+ *  §7 (motion). The two are always changed together.
+ *
+ *  Two families and only two. Chrome flips with the theme; data hues are
+ *  fixed and shift exactly one step for contrast on white, because a reader
+ *  who has learned that amber means memory must not have to relearn it when
+ *  the sun goes down.
+ *
+ *  One hue per card. Series inside a card separate by lightness and dash
+ *  pattern, not by a new hue — the Power card used to spend violet, violet,
+ *  fuchsia and rose on four 1px dashed lines, which is four hues arguing over
+ *  one plot. `--color-fan` is the single deliberate neutral: it is not the
+ *  same kind of quantity as temperature but shares its axis, so its
+ *  dependence is said in shape and colour at once.
+ *
+ *  Rule: no colour that is not in this sheet.
+ *
+ *  The @theme and :root blocks carry the same dark values on purpose —
+ *  inline `style` and SVG stroke attributes read from :root, and cannot see
+ *  Tailwind's @theme layer.
  * ─────────────────────────────────────────────────────────────────────
  */
 @theme {
-  /* Surfaces */
-  --color-bg-primary: #09090b;      /* zinc-950 */
-  --color-bg-card: #18181b;         /* zinc-900 */
-  --color-bg-sidebar: #0c0c0f;      /* slightly darker than primary */
-  --color-bg-hover: #27272a;        /* zinc-800 */
-  --color-bg-header: #0c0c0f;       /* legacy alias */
+  /* ── Surfaces ────────────────────────────────────────────────
+     Height is brightness, in both themes. `bg-elevated` is new: the overlay
+     used to be painted `bg-primary` (#09090b), darker than the cards it
+     floated above (#18181b), so elevation ran backwards in dark mode. */
+  --color-bg-primary:  #09090b;
+  --color-bg-card:     #18181b;
+  --color-bg-elevated: #1f1f23;   /* NEW — overlay panels */
+  --color-bg-sidebar:  #0c0c0f;
+  --color-bg-hover:    #27272a;
 
-  /* Borders */
-  --color-border: #27272a;          /* zinc-800 */
-  --color-border-strong: #3f3f46;   /* zinc-700 */
+  /* ── Borders ─────────────────────────────────────────────── */
+  --color-border:        #27272a;
+  --color-border-strong: #3f3f46;
 
-  /* Text */
-  --color-text-primary: #fafafa;    /* zinc-50 */
-  --color-text-secondary: #a1a1aa;  /* zinc-400 */
-  --color-text-muted: #52525b;      /* zinc-600 */
+  /* ── Text ────────────────────────────────────────────────────
+     `text-muted` lifts from #52525b to #71717a. The old value measured
+     2.3:1 against #18181b, which is not a contrast ratio you can put an
+     11px label in. */
+  --color-text-primary:   #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted:     #71717a;   /* was #52525b */
 
-  /* Chart chrome (grid lines + axis labels) */
+  /* ── Chart chrome ────────────────────────────────────────── */
   --color-chart-grid: #27272a;
-  --color-chart-axis: #71717a;
+  --color-chart-axis: #71717a;   /* was #52525b */
 
-  /* Foreground color to use on top of saturated accent backgrounds (e.g. the
-     active `bg-cpu` tab). Always white in practice since accent hues are
-     all mid-tone blues/greens/etc. — explicit token for clarity. */
+  /* ── On-accent foreground ────────────────────────────────── */
   --color-accent-fg: #ffffff;
 
-  /* Backdrop scrim used behind mobile drawers. Held at a fixed alpha
-     so the overlay reads the same in both themes (scrims always darken). */
+  /* ── Scrim ───────────────────────────────────────────────── */
   --color-scrim: rgb(0 0 0 / 0.5);
 
-  /* Semantic accents — designed for AA contrast on both modes */
-  --color-cpu: #3b82f6;             /* blue-500 */
-  --color-cpu-p: #60a5fa;           /* blue-400 */
-  --color-cpu-e: #38bdf8;           /* sky-400  — distinct from blue */
-  --color-gpu: #10b981;             /* emerald-500 */
-  --color-memory: #f59e0b;          /* amber-500 */
-  --color-memory-swap: #fb923c;     /* orange-400 */
-  /* Deliberately dim/desaturated, not another vivid hue — this labels the
-     "Inactive" segment in the RAM detail breakdown, and needs to read as
-     dimmed-down memory, not compete with Active's amber-500. */
-  --color-memory-inactive: #78716c; /* stone-500 */
-  --color-disk: #06b6d4;            /* cyan-500 */
-  --color-disk-write: #2dd4bf;      /* teal-400 — distinct from cyan */
-  --color-power: #a78bfa;           /* violet-400 */
-  --color-power-cpu: #8b5cf6;       /* violet-500 */
-  --color-power-gpu: #e879f9;       /* fuchsia-400 — warm jump from violet */
-  --color-power-other: #fb7185;     /* rose-400  — warm tail */
-  --color-network-up: #34d399;      /* emerald-400 */
-  --color-network-down: #818cf8;    /* indigo-400 — distinct from blue-400 */
-  --color-temp-cpu: #ef4444;        /* red-500 — thermal */
-  --color-fan: #94a3b8;             /* slate-400 — neutral mechanical */
-  --color-danger: #ef4444;          /* red-500 */
-  --color-warning: #f59e0b;         /* amber-500 */
+  /* ── Data palette — one hue per card ─────────────────────────
+     Hue is fixed across themes; series inside a card separate by lightness
+     (base / light / dim 45%) and dash pattern. The one exception is the
+     CPU/GPU card: the GPU is not a decomposition of the CPU but a separate
+     subsystem, so it gets a hue of its own. */
+  --color-compute:       #3b82f6;   /* CPU, P/E cores */
+  --color-compute-light: #93c5fd;
+  --color-gpu:           #10b981;   /* GPU */
+  --color-gpu-light:     #6ee7b7;
+  --color-memory:        #f59e0b;   /* Used, Swap */
+  --color-memory-light:  #fcd34d;
+  --color-thermal:       #f43f5e;   /* CPU temp */
+  --color-thermal-light: #fda4af;
+  --color-storage:       #22d3ee;   /* Disk read/write — was cyan-500 #06b6d4 */
+  --color-storage-light: #a5f3fc;
+  --color-network:       #818cf8;   /* Down/Up — emerald moved to the GPU */
+  --color-network-light: #c7d2fe;
+  --color-power:         #a78bfa;   /* Total, CPU, GPU, Other */
+  --color-power-light:   #ddd6fe;
+
+  /* Fan is the deliberate neutral. It is not the same kind of quantity as
+     temperature, yet it rides temperature's axis, so its dependence has to
+     be said in shape and colour rather than assumed. */
+  --color-fan: #94a3b8;
+
+  /* ── Status — separate from the data palette, and used only on text and
+     1px borders. Never on a line or a fill: these hues collide with the
+     domain ones, and a red curve would read as a metric. */
+  --color-danger:  #f43f5e;
+  --color-warning: #f59e0b;
+  --color-ok:      #10b981;
+
+  /* ── Thresholds (P8) ─────────────────────────────────────── */
+  --threshold-temp-warn: 85;   /* °C */
+  --threshold-temp-crit: 95;
+  --threshold-mem-warn:  85;   /* % of total */
+  --threshold-mem-crit:  95;
+
+  /* ── Motion — three durations is the whole vocabulary ────── */
+  --motion-enter: 120ms;   /* overlay entrance */
+  --motion-state: 150ms;   /* hover, active, tab change */
+  --motion-fade:  500ms;   /* the touch readout's hold-and-fade */
+  --ease-out-expo: cubic-bezier(.16, 1, .3, 1);
+  /* Chart lines and numbers get no transition at all. An interpolated
+     line draws values that were never measured. */
+
+  /* ── Type scale — five steps. The 9px token is gone: anything that has
+     to be read is 11px or larger, unit suffixes included. ───── */
+  --text-metric-hero: 20px;   /* 700, Mono — a card's one headline value */
+  --text-value-lg:    15px;   /* 600, Mono — chip value, overlay title */
+  --text-value:       13px;   /* 500, Mono — legend seconds, table figures */
+  --text-label:       13px;   /* 500, Sans — card titles, nav tabs, headers */
+  --text-caption:     11px;   /* 400, Mono — axis labels, chip labels, units */
+
+  /* ── Radius — the status bar used to mix 8px nav tabs, 6px pills and
+     4px badges in one 40px row. Chrome is 6px, full stop; 8px is reserved
+     for content cards. ─────────────────────────────────────── */
+  --radius-control: 6px;    /* pills, toggles, inputs — all chrome */
+  --radius-card:    8px;    /* chips, the chart grid */
+  --radius-panel:   12px;   /* overlays */
+
+  /* ── Fonts — self-hosted; see the @font-face block above for why a CDN
+     is not an option here. Mono carries every number and identifier: half
+     this screen is digits that change each second, and a proportional face
+     makes them jitter. It also keeps 0/O, 1/l/I and 5/S apart, which is a
+     feature in an app you read port numbers and PIDs in. ────── */
+  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans KR', -apple-system,
+               BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
 
 :root {
   color-scheme: dark;
 
-  /*
-   * Explicit custom property declarations on :root ensure these tokens are
-   * always available to inline `style` attributes (including SVG stroke/fill)
-   * regardless of how the Tailwind `@theme` layer is emitted by the bundler.
-   * Values must stay in sync with the @theme block above.
-   */
-
-  /* Surfaces */
   --color-bg-primary: #09090b;
   --color-bg-card: #18181b;
+  --color-bg-elevated: #1f1f23;
   --color-bg-sidebar: #0c0c0f;
   --color-bg-hover: #27272a;
-  --color-bg-header: #0c0c0f;
-
-  /* Borders */
   --color-border: #27272a;
   --color-border-strong: #3f3f46;
-
-  /* Text */
   --color-text-primary: #fafafa;
   --color-text-secondary: #a1a1aa;
-  --color-text-muted: #52525b;
-
-  /* Chart chrome */
+  --color-text-muted: #71717a;
   --color-chart-grid: #27272a;
   --color-chart-axis: #71717a;
-
-  /* Misc */
   --color-accent-fg: #ffffff;
   --color-scrim: rgb(0 0 0 / 0.5);
-
-  /* Semantic accents — dark mode defaults */
-  --color-cpu: #3b82f6;
-  --color-cpu-p: #60a5fa;
-  --color-cpu-e: #38bdf8;           /* sky-400 */
+  --color-compute: #3b82f6;
+  --color-compute-light: #93c5fd;
   --color-gpu: #10b981;
+  --color-gpu-light: #6ee7b7;
   --color-memory: #f59e0b;
-  --color-memory-swap: #fb923c;
-  --color-memory-inactive: #78716c; /* stone-500 */
-  --color-disk: #06b6d4;
-  --color-disk-write: #2dd4bf;      /* teal-400 */
+  --color-memory-light: #fcd34d;
+  --color-thermal: #f43f5e;
+  --color-thermal-light: #fda4af;
+  --color-storage: #22d3ee;
+  --color-storage-light: #a5f3fc;
+  --color-network: #818cf8;
+  --color-network-light: #c7d2fe;
   --color-power: #a78bfa;
-  --color-power-cpu: #8b5cf6;
-  --color-power-gpu: #e879f9;       /* fuchsia-400 */
-  --color-power-other: #fb7185;     /* rose-400 */
-  --color-network-up: #34d399;
-  --color-network-down: #818cf8;    /* indigo-400 */
-  --color-temp-cpu: #ef4444;        /* red-500 */
-  --color-fan: #94a3b8;             /* slate-400 */
-  --color-danger: #ef4444;
+  --color-power-light: #ddd6fe;
+  --color-fan: #94a3b8;
+  --color-danger: #f43f5e;
   --color-warning: #f59e0b;
+  --color-ok: #10b981;
 }
+
 
 [data-theme="light"] {
   color-scheme: light;
 
-  /* Surfaces — clean off-white stack */
-  --color-bg-primary: #ffffff;
-  --color-bg-card: #fafafa;         /* zinc-50 */
-  --color-bg-sidebar: #f4f4f5;      /* zinc-100 */
-  --color-bg-hover: #e4e4e7;        /* zinc-200 */
-  --color-bg-header: #f4f4f5;
+  --color-bg-primary:  #ffffff;
+  --color-bg-card:     #fafafa;
+  --color-bg-elevated: #ffffff;   /* light rises toward white */
+  --color-bg-sidebar:  #f4f4f5;
+  --color-bg-hover:    #e4e4e7;
 
-  /* Borders — crisp but subtle */
-  --color-border: #e4e4e7;          /* zinc-200 */
-  --color-border-strong: #d4d4d8;   /* zinc-300 */
+  --color-border:        #e4e4e7;
+  --color-border-strong: #d4d4d8;
 
-  /* Text — zinc-950 foreground against white */
-  --color-text-primary: #09090b;    /* zinc-950 */
-  --color-text-secondary: #52525b;  /* zinc-600 */
-  --color-text-muted: #a1a1aa;      /* zinc-400 */
+  --color-text-primary:   #09090b;
+  --color-text-secondary: #52525b;
+  --color-text-muted:     #a1a1aa;
 
-  /* Chart chrome */
   --color-chart-grid: #e4e4e7;
   --color-chart-axis: #71717a;
 
-  /* On-accent foreground — white still wins against blue-600, emerald-600,
-     violet-600 etc. (all WCAG AA). */
-  --color-accent-fg: #ffffff;
-
-  /* Scrim stays the same — still a darken overlay. A lighter scrim on
-     white backgrounds would wash out; 40–50% black is conventional for
-     both modes. */
   --color-scrim: rgb(0 0 0 / 0.45);
 
-  /* Accents — deepened one step for contrast on white surfaces */
-  --color-cpu: #2563eb;             /* blue-600 */
-  --color-cpu-p: #3b82f6;
-  --color-cpu-e: #0ea5e9;           /* sky-500 */
-  --color-gpu: #059669;             /* emerald-600 */
-  --color-memory: #d97706;          /* amber-600 */
-  --color-memory-swap: #ea580c;     /* orange-600 */
-  --color-memory-inactive: #57534e; /* stone-600 — one step darker for white-bg contrast */
-  --color-disk: #0891b2;            /* cyan-600 */
-  --color-disk-write: #14b8a6;      /* teal-500 */
-  --color-power: #7c3aed;           /* violet-600 */
-  --color-power-cpu: #6d28d9;       /* violet-700 */
-  --color-power-gpu: #c026d3;       /* fuchsia-600 */
-  --color-power-other: #e11d48;     /* rose-600 */
-  --color-network-up: #059669;
-  --color-network-down: #4f46e5;    /* indigo-600 */
-  --color-temp-cpu: #dc2626;        /* red-600 */
-  --color-fan: #64748b;             /* slate-500 */
-  --color-danger: #dc2626;
+  /* Accents keep their hue and deepen exactly one step for contrast on
+     white. The colour-to-metric mapping a reader learns must not be a
+     function of the time of day. */
+  --color-compute:       #2563eb;   --color-compute-light: #3b82f6;
+  --color-gpu:           #059669;   --color-gpu-light:     #10b981;
+  --color-memory:        #d97706;   --color-memory-light:  #f59e0b;
+  --color-thermal:       #e11d48;   --color-thermal-light: #f43f5e;
+  --color-storage:       #0891b2;   --color-storage-light: #22d3ee;
+  --color-network:       #4f46e5;   --color-network-light: #818cf8;
+  --color-power:         #7c3aed;   --color-power-light:   #a78bfa;
+  --color-fan:           #64748b;
+
+  --color-danger:  #e11d48;
   --color-warning: #d97706;
+  --color-ok:      #059669;
 }
+
 
 body {
   margin: 0;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI',
-    system-ui, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

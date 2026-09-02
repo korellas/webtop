@@ -1,0 +1,108 @@
+{
+  "$comment": "Webtop Design v2 — chart series assignment. ChartGrid.tsx / MetricChart.tsx 의 정본. tier 가 스타일을 결정합니다.",
+  "tiers": {
+    "primary":   { "strokeWidth": 2,   "dash": null,  "opacity": 1,    "fill": "gradient 28% -> 0%", "maxPerCard": 1 },
+    "secondary": { "strokeWidth": 1.5, "dash": null,  "opacity": 1,    "fill": null,                 "maxPerCard": 1 },
+    "derived":   { "strokeWidth": 1,   "dash": "4 3", "opacity": 0.45, "fill": null,                 "maxPerCard": 2 },
+    "band":      { "strokeWidth": 0,   "dash": null,  "opacity": 0.12, "fill": "solid",              "note": "다운샘플 min/max 범위. 점선 2줄이 아니라 면으로." },
+    "threshold": { "strokeWidth": 1,   "dash": "6 4", "opacity": 0.7,  "fill": null,                 "note": "warning 색 수평선" }
+  },
+  "readout": {
+    "$comment": "P1 + P5. 같은 숫자를 두 번 보여주지 않습니다.",
+    "tier1": { "size": 20, "weight": 700, "family": "mono", "color": "series color", "count": "카드당 정확히 1개" },
+    "tier2": { "size": 13, "weight": 500, "family": "mono", "color": "text-primary" },
+    "tier3": { "size": 11, "weight": 400, "family": "mono", "color": "text-muted", "align": "right", "content": "파생값 · 피크 · trough" },
+    "removed": ["끝단 value pill", "플롯 위 peak/trough 배지"]
+  },
+  "cards": [
+    {
+      "title": "CPU / GPU",
+      "hue": "compute",
+      "yDomain": [0, 100],
+      "yTicks": [0, 50, 100],
+      "yFormatter": "formatPct",
+      "series": [
+        { "dataKey": "cpu_total",   "color": "--color-compute",       "tier": "primary",   "legend": "tier1", "label": "CPU" },
+        { "dataKey": "gpu_usage",   "color": "--color-gpu",           "tier": "secondary", "legend": "tier2", "label": "gpu" },
+        { "dataKey": "cpu_p_cores", "color": "--color-compute",       "tier": "derived",   "legend": "tier3", "label": "P", "dash": "4 3" },
+        { "dataKey": "cpu_e_cores", "color": "--color-compute",       "tier": "derived",   "legend": "tier3", "label": "E", "dash": "2 2" }
+      ]
+    },
+    {
+      "title": "Temperature",
+      "hue": "thermal",
+      "yDomain": [0, 100],
+      "yTicks": [0, 50, 100],
+      "yFormatter": "deg",
+      "$axisNote": "눈금은 °C 만 의미합니다. fan_pct 는 같은 축에 얹히지만 축으로 읽지 않습니다 — 실제 RPM 은 범례와 툴팁이 소유.",
+      "series": [
+        { "dataKey": "cpu_temp_c", "color": "--color-thermal", "tier": "primary",   "legend": "tier1", "label": "CPU", "trough": true },
+        { "dataKey": "fan_pct",    "color": "--color-fan",     "tier": "derived",   "legend": "tier3", "label": "fan", "dash": "4 3", "trough": true,
+          "valueFormatter": "실제 RPM (fan_pct * 3000 / 100)" },
+        { "threshold": 85, "color": "--color-warning", "tier": "threshold", "label": "85° warn" }
+      ],
+      "conditional": {
+        "hasTemp": "cpu_temp_c > 0 인 샘플이 하나도 없으면 셀 유지 + 'Not available — Apple Silicon only'",
+        "hasFan":  "fan_rpm > 0 인 샘플이 없으면 fan 시리즈 생략 (팬리스 Mac)"
+      }
+    },
+    {
+      "title": "Memory",
+      "hue": "memory",
+      "yDomain": [0, "mem_total_gb"],
+      "yTicks": "0 / half / total",
+      "series": [
+        { "dataKey": "mem_used_gb", "color": "--color-memory",       "tier": "primary",   "legend": "tier1", "label": "Used" },
+        { "dataKey": "mem_swap_gb", "color": "--color-memory-light", "tier": "secondary", "legend": "tier2", "label": "swap" },
+        { "$note": "ram % 는 시리즈가 아니라 tier3 텍스트로만" }
+      ],
+      "threshold": { "at": "--threshold-mem-warn", "of": "mem_total" }
+    },
+    {
+      "title": "Power",
+      "hue": "power",
+      "yDomain": [0, "auto"],
+      "series": [
+        { "dataKey": "power_total_w", "color": "--color-power", "tier": "primary", "legend": "tier1", "label": "Total" },
+        { "dataKey": "power_cpu_w",   "color": "--color-power", "tier": "derived", "legend": "tier3", "label": "C", "dash": "4 3" },
+        { "dataKey": "power_gpu_w",   "color": "--color-power", "tier": "derived", "legend": "tier3", "label": "G", "dash": "2 2" },
+        { "dataKey": "power_other_w", "color": "--color-power", "tier": "derived", "legend": "tier3", "label": "O", "dash": "6 3" }
+      ],
+      "$note": "기존에는 violet / violet / fuchsia / rose 4개 hue 였습니다. 1px 점선 4개가 겹치면 판독 불가."
+    },
+    {
+      "title": "Network",
+      "hue": "network",
+      "yDomain": [0, "auto"],
+      "yFormatter": "formatRateTick",
+      "series": [
+        { "dataKey": "net_down_mbs", "color": "--color-network",       "tier": "primary",   "legend": "tier1", "label": "▼" },
+        { "dataKey": "net_up_mbs",   "color": "--color-network-light", "tier": "secondary", "legend": "tier2", "label": "▲" },
+        { "$note": "Σ▲ / Σ▼ 누적은 시리즈가 아니라 tier3 텍스트" }
+      ],
+      "$note": "Down 이 통상 Up 의 3–7배이므로 primary/secondary 가 정직합니다. 두 방향을 동급으로 보이게 하려면 Up 에 pink-400 #f472b6 을 허용하는 대안이 있으나 채택하지 않았습니다."
+    },
+    {
+      "title": "Disk I/O",
+      "hue": "storage",
+      "yDomain": [0, "auto"],
+      "yFormatter": "formatRateTick",
+      "series": [
+        { "dataKey": "disk_read_mbs",  "color": "--color-storage",       "tier": "primary",   "legend": "tier1", "label": "Read" },
+        { "dataKey": "disk_write_mbs", "color": "--color-storage-light", "tier": "secondary", "legend": "tier2", "label": "Write" }
+      ]
+    }
+  ],
+  "chips": {
+    "$comment": "SummaryCards.tsx. 8개 유지 — 병합/삭제하지 않습니다.",
+    "minWidth": 144,
+    "gaugeSize": 30,
+    "gaugeStroke": 2.5,
+    "order": ["CPU", "GPU", "RAM", "DISK", "I/O", "NET", "POWER", "ENERGY"],
+    "hues": { "CPU": "compute", "GPU": "gpu", "RAM": "memory", "DISK": "storage", "I/O": "storage", "NET": "network", "POWER": "power", "ENERGY": "power" },
+    "interactive": ["CPU", "RAM", "DISK", "NET", "POWER", "ENERGY"],
+    "nonInteractive": ["GPU", "I/O"],
+    "type": { "label": "11px mono uppercase tracking .08em text-secondary", "value": "15px mono 600", "sub": "11px mono text-muted" },
+    "thresholdBorder": "초과 시 보더만 --color-danger / --color-warning. 배경 채우기·깜빡임 금지."
+  }
+}

@@ -137,7 +137,7 @@ export default function NetworkDetail({ onClose }: DetailProps) {
   return (
     <div className="pb-2">
       <DrawerHeader
-        color={COLORS.networkDown}
+        color={COLORS.network}
         label="Net"
         value={interfaces ? `${interfaces.length} active` : undefined}
         labelId="drawer-title"
@@ -150,13 +150,13 @@ export default function NetworkDetail({ onClose }: DetailProps) {
             <TotalStat
               label={`▲ Sent (${timescale})`}
               value={formatBytes(networkTotals.up_bytes)}
-              color={COLORS.networkUp}
+              color={COLORS.networkLight}
             />
             <span className="w-px h-6 bg-border" />
             <TotalStat
               label={`▼ Received (${timescale})`}
               value={formatBytes(networkTotals.down_bytes)}
-              color={COLORS.networkDown}
+              color={COLORS.network}
             />
           </div>
         )}
@@ -188,11 +188,11 @@ export default function NetworkDetail({ onClose }: DetailProps) {
                 but that only helps on hover. */}
             <div className="flex items-center gap-3 text-[10px] text-text-secondary">
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLORS.networkUp }} />
+                <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLORS.networkLight }} />
                 Sent
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLORS.networkDown }} />
+                <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLORS.network }} />
                 Received
               </span>
             </div>
@@ -247,11 +247,11 @@ export default function NetworkDetail({ onClose }: DetailProps) {
                           <div className="text-text-muted text-[10px] mb-1">
                             {formatBucketTooltip(ts, group)}
                           </div>
-                          <div className="flex items-center gap-1.5" style={{ color: COLORS.networkUp }}>
+                          <div className="flex items-center gap-1.5" style={{ color: COLORS.networkLight }}>
                             <span>▲</span>
                             <span className="font-semibold tabular-nums">{formatBytes(up)}</span>
                           </div>
-                          <div className="flex items-center gap-1.5" style={{ color: COLORS.networkDown }}>
+                          <div className="flex items-center gap-1.5" style={{ color: COLORS.network }}>
                             <span>▼</span>
                             <span className="font-semibold tabular-nums">{formatBytes(down)}</span>
                           </div>
@@ -259,8 +259,8 @@ export default function NetworkDetail({ onClose }: DetailProps) {
                       );
                     }}
                   />
-                  <Bar dataKey="up" fill={COLORS.networkUp} radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                  <Bar dataKey="down" fill={COLORS.networkDown} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="up" fill={COLORS.networkLight} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="down" fill={COLORS.network} radius={[3, 3, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -268,9 +268,9 @@ export default function NetworkDetail({ onClose }: DetailProps) {
 
           {!historyLoading && history && (
             <div className="flex items-center justify-around p-3 bg-bg-hover/30 rounded-lg border border-border text-[11px]">
-              <TotalStat label="▲ Total" value={formatBytes(history.total_up_bytes)} color={COLORS.networkUp} />
+              <TotalStat label="▲ Total" value={formatBytes(history.total_up_bytes)} color={COLORS.networkLight} />
               <span className="w-px h-6 bg-border" />
-              <TotalStat label="▼ Total" value={formatBytes(history.total_down_bytes)} color={COLORS.networkDown} />
+              <TotalStat label="▼ Total" value={formatBytes(history.total_down_bytes)} color={COLORS.network} />
             </div>
           )}
         </div>
@@ -404,11 +404,11 @@ function InterfaceRow({ iface }: { iface: NetInterfaceInfo }) {
       {/* Live traffic */}
       <div className="flex items-center gap-4 text-[12px] font-semibold tabular-nums">
         <span className="flex items-center gap-1.5">
-          <span style={{ color: COLORS.networkUp }}>▲</span>
+          <span style={{ color: COLORS.networkLight }}>▲</span>
           {formatMBps(iface.tx_bytes_sec)}
         </span>
         <span className="flex items-center gap-1.5">
-          <span style={{ color: COLORS.networkDown }}>▼</span>
+          <span style={{ color: COLORS.network }}>▼</span>
           {formatMBps(iface.rx_bytes_sec)}
         </span>
       </div>

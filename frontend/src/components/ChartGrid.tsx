@@ -148,18 +148,18 @@ export default function ChartGrid() {
         title="CPU / GPU"
         data={banded as ChartData}
         lines={[
-          { dataKey: 'cpu_total', color: COLORS.cpu },
+          { dataKey: 'cpu_total', color: COLORS.compute },
           { dataKey: 'gpu_usage', color: COLORS.gpu },
-          { dataKey: 'cpu_p_cores', color: COLORS.cpuP, dashed: true },
-          { dataKey: 'cpu_e_cores', color: COLORS.cpuE, dashed: true },
+          { dataKey: 'cpu_p_cores', color: COLORS.computeLight, dashed: true },
+          { dataKey: 'cpu_e_cores', color: COLORS.computeLight, dashed: true },
         ]}
         yDomain={[0, 100]}
         yFormatter={(v) => `${Math.round(v)}%`}
         legend={[
-          { label: 'CPU', color: COLORS.cpu, value: pct(latest?.cpu_total), dataKey: 'cpu_total', primary: true },
+          { label: 'CPU', color: COLORS.compute, value: pct(latest?.cpu_total), dataKey: 'cpu_total', primary: true },
           { label: 'GPU', color: COLORS.gpu, value: pct(latest?.gpu_usage), dataKey: 'gpu_usage', primary: true },
-          { label: 'P', color: COLORS.cpuP, value: pct(latest?.cpu_p_cores), dataKey: 'cpu_p_cores' },
-          { label: 'E', color: COLORS.cpuE, value: pct(latest?.cpu_e_cores), dataKey: 'cpu_e_cores' },
+          { label: 'P', color: COLORS.computeLight, value: pct(latest?.cpu_p_cores), dataKey: 'cpu_p_cores' },
+          { label: 'E', color: COLORS.computeLight, value: pct(latest?.cpu_e_cores), dataKey: 'cpu_e_cores' },
         ]}
         hideXAxis
       />,
@@ -181,7 +181,7 @@ export default function ChartGrid() {
             // Trough marker enabled here: a sudden temperature drop
             // (throttle recovery) is real signal, unlike CPU/GPU/power/
             // network where the minimum sits near zero and says nothing.
-            { dataKey: 'cpu_temp_c', color: COLORS.tempCpu, trough: true },
+            { dataKey: 'cpu_temp_c', color: COLORS.thermal, trough: true },
             // Trough marker here catches a fan spinning down.
             ...(hasFan
               ? [{
@@ -203,7 +203,7 @@ export default function ChartGrid() {
           legend={[
             {
               label: 'CPU',
-              color: COLORS.tempCpu,
+              color: COLORS.thermal,
               value:
                 typeof latest?.cpu_temp_c === 'number' && latest.cpu_temp_c > 0
                   ? `${Math.round(latest.cpu_temp_c)}°C`
@@ -248,7 +248,7 @@ export default function ChartGrid() {
         data={memData}
         lines={[
           { dataKey: 'mem_used_gb', color: COLORS.memory },
-          { dataKey: 'mem_swap_gb', color: COLORS.memorySwap, dashed: true },
+          { dataKey: 'mem_swap_gb', color: COLORS.memoryLight, dashed: true },
         ]}
         yDomain={[0, Math.ceil(memTotalGB)]}
         yFormatter={(v) => v < 10 ? `${v.toFixed(1)}G` : `${Math.round(v)}G`}
@@ -271,7 +271,7 @@ export default function ChartGrid() {
           },
           {
             label: 'Swap',
-            color: COLORS.memorySwap,
+            color: COLORS.memoryLight,
             value: latest ? formatGB(latest.mem_swap_used, 2) : '—',
             dataKey: 'mem_swap_gb',
           },
@@ -284,9 +284,9 @@ export default function ChartGrid() {
         data={banded as ChartData}
         lines={[
           { dataKey: 'power_total_w', color: COLORS.power },
-          { dataKey: 'power_cpu_w', color: COLORS.powerCpu, dashed: true },
-          { dataKey: 'power_gpu_w', color: COLORS.powerGpu, dashed: true },
-          { dataKey: 'power_other_w', color: COLORS.powerOther, dashed: true },
+          { dataKey: 'power_cpu_w', color: COLORS.power, dashed: true },
+          { dataKey: 'power_gpu_w', color: COLORS.power, dashed: true },
+          { dataKey: 'power_other_w', color: COLORS.power, dashed: true },
         ]}
         yDomain={[0, 'auto'] as [number, number | 'auto']}
         yFormatter={(v) => `${Math.round(v)}W`}
@@ -300,19 +300,19 @@ export default function ChartGrid() {
           },
           {
             label: 'CPU',
-            color: COLORS.powerCpu,
+            color: COLORS.power,
             value: latest ? formatWatts(latest.power_cpu_w) : '—',
             dataKey: 'power_cpu_w',
           },
           {
             label: 'GPU',
-            color: COLORS.powerGpu,
+            color: COLORS.power,
             value: latest ? formatWatts(latest.power_gpu_w) : '—',
             dataKey: 'power_gpu_w',
           },
           {
             label: 'Other',
-            color: COLORS.powerOther,
+            color: COLORS.power,
             value: latest ? formatWatts(latest.power_other_w) : '—',
             dataKey: 'power_other_w',
           },
@@ -326,22 +326,22 @@ export default function ChartGrid() {
         title="Network"
         data={netData}
         lines={[
-          { dataKey: 'net_up_mbs', color: COLORS.networkUp },
-          { dataKey: 'net_down_mbs', color: COLORS.networkDown },
+          { dataKey: 'net_up_mbs', color: COLORS.networkLight },
+          { dataKey: 'net_down_mbs', color: COLORS.network },
         ]}
         yDomain={[0, 'auto'] as [number, number | 'auto']}
         yFormatter={formatRateTick}
         legend={[
           {
             label: '▲',
-            color: COLORS.networkUp,
+            color: COLORS.networkLight,
             value: latest ? formatMBps(latest.net_up_bytes_sec) : '—',
             dataKey: 'net_up_mbs',
             primary: true,
           },
           {
             label: '▼',
-            color: COLORS.networkDown,
+            color: COLORS.network,
             value: latest ? formatMBps(latest.net_down_bytes_sec) : '—',
             dataKey: 'net_down_mbs',
             primary: true,
@@ -352,12 +352,12 @@ export default function ChartGrid() {
             // rides the title-row pills like P/E cores do, since the ▲/▼
             // rates already own the hero end-tags.
             label: 'Σ▲',
-            color: COLORS.networkUp,
+            color: COLORS.networkLight,
             value: networkTotals ? formatBytes(networkTotals.up_bytes) : '—',
           },
           {
             label: 'Σ▼',
-            color: COLORS.networkDown,
+            color: COLORS.network,
             value: networkTotals ? formatBytes(networkTotals.down_bytes) : '—',
           },
         ]}
@@ -367,22 +367,22 @@ export default function ChartGrid() {
         title="Disk I/O"
         data={diskData}
         lines={[
-          { dataKey: 'disk_read_mbs', color: COLORS.disk },
-          { dataKey: 'disk_write_mbs', color: COLORS.diskWrite },
+          { dataKey: 'disk_read_mbs', color: COLORS.storage },
+          { dataKey: 'disk_write_mbs', color: COLORS.storageLight },
         ]}
         yDomain={[0, 'auto'] as [number, number | 'auto']}
         yFormatter={formatRateTick}
         legend={[
           {
             label: 'Read',
-            color: COLORS.disk,
+            color: COLORS.storage,
             value: latest ? formatMBps(latest.disk_read_bytes_sec) : '—',
             dataKey: 'disk_read_mbs',
             primary: true,
           },
           {
             label: 'Write',
-            color: COLORS.diskWrite,
+            color: COLORS.storageLight,
             value: latest ? formatMBps(latest.disk_write_bytes_sec) : '—',
             dataKey: 'disk_write_mbs',
             primary: true,

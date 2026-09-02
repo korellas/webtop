@@ -107,7 +107,7 @@ export default function FullscreenToggle() {
         ${error
           ? 'border-danger text-danger'
           : active
-            ? 'border-cpu text-cpu'
+            ? 'border-border-strong bg-bg-hover text-text-primary'
             : 'border-border text-text-secondary hover:text-text-primary'}
       `}
     >

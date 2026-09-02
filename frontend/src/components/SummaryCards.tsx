@@ -64,7 +64,7 @@ export default function SummaryCards() {
         label="CPU"
         value={`${Math.round(cpuTotal)}%`}
         sub={`P${Math.round(latest.cpu_p_cores)}% E${Math.round(latest.cpu_e_cores)}%`}
-        gauge={<RingGauge value={cpuTotal} color={COLORS.cpu} size={30} strokeWidth={2.5} />}
+        gauge={<RingGauge value={cpuTotal} color={COLORS.compute} size={30} strokeWidth={2.5} />}
       />
       {/* GPU — non-clickable: no drill-down view worth showing (unified memory, no VRAM). */}
       <MiniChip
@@ -85,24 +85,24 @@ export default function SummaryCards() {
         label="Disk"
         value={`${diskPct.toFixed(0)}%`}
         sub={formatGB(latest.disk_used, 0)}
-        gauge={<RingGauge value={diskPct} color={COLORS.disk} size={30} strokeWidth={2.5} />}
+        gauge={<RingGauge value={diskPct} color={COLORS.storage} size={30} strokeWidth={2.5} />}
       />
       <MiniDualChip
         card="net"
         label="Net"
-        gauge={<RingGauge value={netPct} color={COLORS.networkDown} size={30} strokeWidth={2.5} />}
+        gauge={<RingGauge value={netPct} color={COLORS.network} size={30} strokeWidth={2.5} />}
         rows={[
-          { icon: '▲', color: COLORS.networkUp, value: formatMBps(latest.net_up_bytes_sec) },
-          { icon: '▼', color: COLORS.networkDown, value: formatMBps(latest.net_down_bytes_sec) },
+          { icon: '▲', color: COLORS.networkLight, value: formatMBps(latest.net_up_bytes_sec) },
+          { icon: '▼', color: COLORS.network, value: formatMBps(latest.net_down_bytes_sec) },
         ]}
       />
       {/* I/O — non-clickable: drilling down would duplicate the Disk drawer. */}
       <MiniDualChip
         label="I/O"
-        gauge={<RingGauge value={diskIoPct} color={COLORS.disk} size={30} strokeWidth={2.5} />}
+        gauge={<RingGauge value={diskIoPct} color={COLORS.storage} size={30} strokeWidth={2.5} />}
         rows={[
-          { icon: 'R', color: COLORS.disk, value: formatMBps(latest.disk_read_bytes_sec) },
-          { icon: 'W', color: COLORS.diskWrite, value: formatMBps(latest.disk_write_bytes_sec) },
+          { icon: 'R', color: COLORS.storage, value: formatMBps(latest.disk_read_bytes_sec) },
+          { icon: 'W', color: COLORS.storageLight, value: formatMBps(latest.disk_write_bytes_sec) },
         ]}
       />
       <MiniChip

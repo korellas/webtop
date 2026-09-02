@@ -131,7 +131,7 @@ export default function FolderTree() {
             className="mt-3 rounded border border-border-strong px-3 py-1 text-[11px]
                        text-text-secondary transition-colors hover:bg-bg-hover
                        hover:text-text-primary focus-visible:outline-2
-                       focus-visible:outline-offset-2 focus-visible:outline-disk"
+                       focus-visible:outline-offset-2 focus-visible:outline-storage"
           >
             Scan now
           </button>
@@ -163,7 +163,7 @@ export default function FolderTree() {
             className="rounded px-1.5 py-0.5 text-[10px] text-text-muted transition-colors
                        hover:bg-bg-hover hover:text-text-primary disabled:opacity-40
                        focus-visible:outline-2 focus-visible:outline-offset-2
-                       focus-visible:outline-disk"
+                       focus-visible:outline-storage"
           >
             {scanning ? 'scanning…' : 'rescan'}
           </button>
@@ -200,7 +200,7 @@ function Breadcrumb({
   const crumbClass =
     'rounded px-1 py-0.5 text-[11px] text-text-secondary transition-colors ' +
     'hover:bg-bg-hover hover:text-text-primary focus-visible:outline-2 ' +
-    'focus-visible:outline-offset-2 focus-visible:outline-disk';
+    'focus-visible:outline-offset-2 focus-visible:outline-storage';
 
   return (
     <nav aria-label="Folder path" className="flex min-w-0 items-baseline gap-0.5 overflow-hidden">
@@ -262,7 +262,7 @@ function FolderBar({
 
       <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-bg-primary">
         <span
-          className="block h-full rounded-full bg-disk transition-[width] duration-500"
+          className="block h-full rounded-full bg-storage transition-[width] duration-500"
           style={{ width: `${width}%` }}
         />
       </span>
@@ -286,7 +286,7 @@ function FolderBar({
           aria-label={label}
           className="flex w-full items-center gap-2 rounded px-1 py-1 text-left
                      transition-colors hover:bg-bg-hover focus-visible:outline-2
-                     focus-visible:outline-offset-2 focus-visible:outline-disk"
+                     focus-visible:outline-offset-2 focus-visible:outline-storage"
         >
           {content}
         </button>

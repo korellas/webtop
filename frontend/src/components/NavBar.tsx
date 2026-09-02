@@ -41,7 +41,7 @@ export default function NavBar() {
               h-7 rounded-lg flex items-center gap-1.5 px-1.5 sm:px-2
               text-[11px] font-medium transition-colors
               ${active
-                ? 'bg-cpu text-accent-fg'
+                ? 'bg-bg-hover text-text-primary font-semibold'
                 : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'}
             `}
           >

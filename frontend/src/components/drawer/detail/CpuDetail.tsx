@@ -23,7 +23,7 @@ export default function CpuDetail({ onClose }: DetailProps) {
   return (
     <div className="pb-2">
       <DrawerHeader
-        color={COLORS.cpu}
+        color={COLORS.compute}
         label="CPU"
         value={latest ? `${Math.round(latest.cpu_total)}%` : undefined}
         labelId="drawer-title"
@@ -47,7 +47,7 @@ export default function CpuDetail({ onClose }: DetailProps) {
               title="Performance cores"
               count={pCores.length}
               cores={pCores}
-              color={COLORS.cpu}
+              color={COLORS.compute}
               prefix="P"
             />
           )}
@@ -56,7 +56,7 @@ export default function CpuDetail({ onClose }: DetailProps) {
               title="Efficiency cores"
               count={eCores.length}
               cores={eCores}
-              color={COLORS.cpuE}
+              color={COLORS.computeLight}
               prefix="E"
             />
           )}

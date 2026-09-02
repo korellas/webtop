@@ -178,7 +178,7 @@ function Row({
       onClick={onSelect}
       className={`
         cursor-pointer border-b border-border/40
-        ${selected ? 'bg-cpu/15' : 'hover:bg-bg-hover/60'}
+        ${selected ? 'bg-bg-hover' : 'hover:bg-bg-hover/60'}
       `}
     >
       <td className="px-2 py-1.5 text-right tabular-nums text-text-muted">{p.pid}</td>

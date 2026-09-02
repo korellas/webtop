@@ -43,9 +43,9 @@ export default function PowerDetail({ onClose }: DetailProps) {
           </h3>
           <div className="space-y-2">
             <PowerRow label="Total" value={totalW} maxW={maxW} color={COLORS.power} strong />
-            <PowerRow label="CPU" value={cpuW} maxW={maxW} color={COLORS.powerCpu} />
-            <PowerRow label="GPU" value={gpuW} maxW={maxW} color={COLORS.powerGpu} />
-            <PowerRow label="Other" value={otherW} maxW={maxW} color={COLORS.powerOther} />
+            <PowerRow label="CPU" value={cpuW} maxW={maxW} color={COLORS.power} />
+            <PowerRow label="GPU" value={gpuW} maxW={maxW} color={COLORS.power} />
+            <PowerRow label="Other" value={otherW} maxW={maxW} color={COLORS.power} />
           </div>
           <div className="text-[10px] text-text-muted mt-3 leading-relaxed">
             “Other” includes DRAM, display, Wi-Fi, SoC fabric, and the ANE.

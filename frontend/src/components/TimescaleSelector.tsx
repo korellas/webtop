@@ -36,7 +36,7 @@ export default function TimescaleSelector() {
               onClick={() => setTimescale(s)}
               className={`px-1 sm:px-2 min-h-7 min-w-6 flex items-center justify-center cursor-pointer transition-colors ${
                 s === timescale
-                  ? 'bg-cpu text-accent-fg'
+                  ? 'bg-bg-hover text-text-primary font-semibold'
                   : 'text-text-secondary hover:text-text-primary'
               }`}
             >
@@ -49,7 +49,7 @@ export default function TimescaleSelector() {
           title="Toggle Y-axis autoscale"
           className={`px-2 min-h-7 flex items-center justify-center border rounded-md cursor-pointer transition-colors ${
             autoscale
-              ? 'bg-cpu/20 border-cpu text-cpu'
+              ? 'bg-bg-hover border-border-strong text-text-primary font-semibold'
               : 'bg-bg-card border-border text-text-secondary hover:text-text-primary'
           }`}
         >

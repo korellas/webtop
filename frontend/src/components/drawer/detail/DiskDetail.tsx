@@ -32,7 +32,7 @@ export default function DiskDetail({ onClose }: DetailProps) {
   return (
     <div className="pb-2">
       <DrawerHeader
-        color={COLORS.disk}
+        color={COLORS.storage}
         label="Disk"
         value={count > 0 ? `${count} volumes` : undefined}
         labelId="drawer-title"
@@ -85,7 +85,7 @@ function DiskRow({ disk }: { disk: DiskInfo }) {
             {disk.name || disk.mount_point}
           </span>
           {disk.is_boot && (
-            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-cpu/20 text-cpu border border-cpu/40">
+            <span className="text-[11px] uppercase tracking-wider px-1.5 py-0.5 rounded-control text-text-secondary border border-border-strong">
               boot
             </span>
           )}

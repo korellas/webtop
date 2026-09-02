@@ -1,4 +1,4 @@
-import { useRef, useLayoutEffect, useMemo, useCallback } from 'react';
+import { useRef, useLayoutEffect, useMemo, useCallback, useState, useEffect } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, ReferenceLine,
 } from 'recharts';
@@ -193,6 +193,31 @@ function splitUnit(v: string): [string, string] {
   return m ? [m[1], m[2]] : [v, ''];
 }
 
+/**
+ * True below Tailwind's `sm`.
+ *
+ * Recharts takes its plot margins and axis width as props, not CSS, so the
+ * breakpoint has to be readable from JavaScript. A media-query listener fires
+ * only when the viewport actually crosses 640px, which is not something that
+ * happens while anyone is reading — unlike the hover, this is safe to hold in
+ * state.
+ */
+const PHONE_QUERY = '(max-width: 639px)';
+
+function useIsPhone(): boolean {
+  const [phone, setPhone] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_QUERY);
+    const sync = () => setPhone(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  return phone;
+}
+
 const CURSOR_STYLE = {
   stroke: 'var(--color-chart-axis)',
   strokeWidth: 1,
@@ -257,6 +282,7 @@ export default function MetricChart({
   const endHover = useCallback(() => {
     useHoverStore.getState().clearHover(title);
   }, [title]);
+  const isPhone = useIsPhone();
   const xDomain = getXDomain(timescale);
   const xTickCount = getXTickCount(timescale);
   // 1) Bucket the series down to MAX_POINTS[timescale]
@@ -496,6 +522,18 @@ export default function MetricChart({
               tick={{ fontSize: 11, fontFamily: 'var(--font-mono)', fill: 'var(--color-chart-axis)' }}
               stroke="transparent"
               tickCount={!autoscale && yTicks ? undefined : 4}
+              // Hidden outright on a phone, not narrowed. 38px of a 186px cell
+              // is a fifth of the card spent on a scale, and the reading the
+              // scale exists to support is already printed at the top of the
+              // card in 20px. Trimming the gutter instead was the wrong move
+              // and a familiar one: at 30px the axis rendered `100%` as
+              // `.00%` and `128G` as `.28G`, because it truncates from the
+              // left — a gutter one character short does not produce a cramped
+              // label, it produces a confident wrong one.
+              //
+              // `hide` keeps the scale and drops only the rendering, so the
+              // domain, the gridlines and the zero baseline are untouched.
+              hide={isPhone}
               width={38}
               allowDataOverflow
               axisLine={false}
@@ -749,7 +787,7 @@ export default function MetricChart({
         row is the silent deletion this whole readout was built to stop. The
         peaks it drops are still in the tooltip on hover.
       */}
-      <div className="pointer-events-none absolute top-1 left-[38px] right-2 z-10 flex items-baseline gap-2">
+      <div className="pointer-events-none absolute top-1 left-1 sm:left-[38px] right-2 z-10 flex items-baseline gap-2">
         {/* The title yields, never the number. Principle 1 of the guide is
             that chrome is not allowed to outrank data, and on a 186px cell
             something has to give — so the title truncates and the headline

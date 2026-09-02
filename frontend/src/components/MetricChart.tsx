@@ -71,8 +71,12 @@ export interface LegendItem {
   /**
    * Where this row sits in the card's readout hierarchy.
    *
-   * 1 — the card's headline, 20px mono in the series colour. Exactly one.
-   * 2 — the co-star (GPU, Swap, Write, Up), 13px mono.
+   * 1 — the card's headline, in the series colour. Usually one; two where the
+   *     card is genuinely about a pair (CPU and GPU, down and up, read and
+   *     write), because demoting either of those makes the card look like it
+   *     is about the other.
+   * 2 — a supporting reading that is not a peer — Memory's swap beside its
+   *     used, say. 13px mono, in text-primary rather than the series colour.
    * 3 — derived values, peaks and troughs: 11px mono, muted, right-aligned
    *     behind a rule, because a peak is a different *kind* of fact from a
    *     current value and reading them as one list was the flat legend this
@@ -392,6 +396,11 @@ export default function MetricChart({
   const allLegend: LegendItem[] = [...(legend ?? []), ...peakLegend, ...troughLegend];
   const rank = (l: LegendItem) => l.tier ?? 3;
   const tier1 = allLegend.filter((l) => rank(l) === 1);
+  /** True when every headline is measured in the same thing — CPU and GPU in
+   *  percent, down and up in MB/s — so the unit need only be said once. */
+  const sharedUnit =
+    tier1.length > 1
+    && new Set(tier1.map((l) => splitUnit(l.value ?? '')[1])).size === 1;
   const tier2 = allLegend.filter((l) => rank(l) === 2);
   const tier3 = allLegend.filter((l) => rank(l) === 3);
 
@@ -796,21 +805,28 @@ export default function MetricChart({
           {title}
         </span>
 
-        {tier1.map((l) => {
+        {/*
+          Two headlines that share a unit print it once, at the end. "MB/s"
+          twice on a 186px card is 26px spent saying the same never-changing
+          thing twice, and it was buying that by truncating the card's title
+          to "Netwo…" — which inverts the rule this row is built on.
+        */}
+        {tier1.map((l, i) => {
           // The unit rides at caption size, the way the chips already set
           // theirs: "0.058" is the reading and "MB/s" is what it is measured
           // in, and giving both 20px spends a third of a phone cell saying
           // something that never changes.
           const [num, unit] = splitUnit(l.value ?? '—');
+          const showUnit = !sharedUnit || i === tier1.length - 1;
           return (
             <span key={`t1-${l.label}`} className="shrink-0 flex items-baseline gap-1">
               <span
-                className="font-mono text-[15px] sm:text-[20px] font-bold tabular-nums leading-none"
+                className="font-mono text-[13px] sm:text-[15px] font-bold tabular-nums leading-none"
                 style={{ color: l.color }}
               >
                 {num}
               </span>
-              {unit && (
+              {unit && showUnit && (
                 <span className="text-[11px] font-mono" style={{ color: l.color }}>{unit}</span>
               )}
               {/* Redundant beside the title on a phone: the card is already

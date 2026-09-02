@@ -164,7 +164,7 @@ export default function ChartGrid() {
         yFormatter={formatPercent}
         legend={[
           { label: 'CPU', color: COLORS.compute, value: pct(latest?.cpu_total), dataKey: 'cpu_total', tier: 1 },
-          { label: 'gpu', color: COLORS.gpu, value: pct(latest?.gpu_usage), dataKey: 'gpu_usage', tier: 2 },
+          { label: 'GPU', color: COLORS.gpu, value: pct(latest?.gpu_usage), dataKey: 'gpu_usage', tier: 1 },
           { label: 'P', color: COLORS.compute, value: pct(latest?.cpu_p_cores), dataKey: 'cpu_p_cores', tier: 3 },
           { label: 'E', color: COLORS.compute, value: pct(latest?.cpu_e_cores), dataKey: 'cpu_e_cores', tier: 3 },
         ]}
@@ -289,9 +289,13 @@ export default function ChartGrid() {
           },
           {
             // A proportion of a total already drawn as the axis. It is a
-            // restatement, not a series — so it is text in tier 3 and has
-            // no line on the plot at all.
-            label: 'of total',
+            // restatement, not a series — so it is text in tier 3 and has no
+            // line on the plot at all.
+            //
+            // "of total" was a fragment, not a name: tier 3 renders label then
+            // value, so it read "of total 8.4%". A tier-3 label has to be a
+            // noun that survives being read on its own.
+            label: 'usage',
             color: COLORS.memory,
             value: pct(memPct),
             tier: 3,
@@ -306,7 +310,9 @@ export default function ChartGrid() {
         lines={[
           { dataKey: 'power_total_w', color: COLORS.power, tier: 'primary' },
           // Three components of the line above them, so: same hue, and the
-          // dash pattern is what tells them apart. This card used to spend
+          // dash pattern is what tells them apart. Their legend rows are
+          // spelled out — `C`, `G` and `O` were a key you had to already know,
+          // and tier 3 has the width for words. This card used to spend
           // violet, violet, fuchsia and rose on the four of them, which put
           // four hues in an argument over one plot to say one thing.
           { dataKey: 'power_cpu_w', color: COLORS.power, tier: 'derived', dash: '4 3' },
@@ -324,21 +330,21 @@ export default function ChartGrid() {
             tier: 1,
           },
           {
-            label: 'C',
+            label: 'CPU',
             color: COLORS.power,
             value: latest ? formatWatts(latest.power_cpu_w) : '—',
             dataKey: 'power_cpu_w',
             tier: 3,
           },
           {
-            label: 'G',
+            label: 'GPU',
             color: COLORS.power,
             value: latest ? formatWatts(latest.power_gpu_w) : '—',
             dataKey: 'power_gpu_w',
             tier: 3,
           },
           {
-            label: 'O',
+            label: 'Other',
             color: COLORS.power,
             value: latest ? formatWatts(latest.power_other_w) : '—',
             dataKey: 'power_other_w',
@@ -361,9 +367,12 @@ export default function ChartGrid() {
         yFormatter={formatRateTick}
         legend={[
           {
-            // Down leads. It runs three to seven times Up on any machine
-            // that is being used rather than serving, so ranking them is
-            // reporting the shape of the data, not picking a favourite.
+            // Down and Up are peers in the readout: two directions of one
+            // quantity, and demoting either makes the card look like it is
+            // about the other. They stay ranked on the *plot*, where Down
+            // takes the area fill because it runs three to seven times Up on
+            // any machine that is being used rather than serving — which is a
+            // statement about ink, not about importance.
             label: '▼',
             color: COLORS.network,
             value: latest ? formatMBps(latest.net_down_bytes_sec) : '—',
@@ -375,7 +384,7 @@ export default function ChartGrid() {
             color: COLORS.networkLight,
             value: latest ? formatMBps(latest.net_up_bytes_sec) : '—',
             dataKey: 'net_up_mbs',
-            tier: 2,
+            tier: 1,
           },
           {
             // Totals over the visible window — an integral of the rate
@@ -417,7 +426,7 @@ export default function ChartGrid() {
             color: COLORS.storageLight,
             value: latest ? formatMBps(latest.disk_write_bytes_sec) : '—',
             dataKey: 'disk_write_mbs',
-            tier: 2,
+            tier: 1,
           },
         ]}
       />,

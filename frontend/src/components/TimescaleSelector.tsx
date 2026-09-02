@@ -27,7 +27,7 @@ export default function TimescaleSelector() {
   const toggleAutoscale = useChartSettingsStore((s) => s.toggleAutoscale);
 
   return (
-    <div className="flex flex-col gap-1.5 text-[10px]">
+    <div className="flex flex-col gap-1.5 text-[11px]">
       <div className="flex items-center gap-1.5 flex-wrap">
         <div className="flex bg-bg-card border border-border rounded-control overflow-hidden">
           {SCALES.map((s) => (

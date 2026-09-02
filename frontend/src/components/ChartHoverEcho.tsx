@@ -177,7 +177,7 @@ export default function ChartHoverEcho({ chartId, rows, series }: ChartHoverEcho
           >
             {points.map((p) => (
               <div key={p.dataKey} className="flex items-center gap-2 text-[11px] leading-none">
-                <span className="text-[10px] shrink-0" style={{ color: p.color }}>━</span>
+                <span className="text-[11px] shrink-0" style={{ color: p.color }}>━</span>
                 <span className="text-text-secondary">{p.label}</span>
                 <span className="font-semibold tabular-nums text-text-primary ml-auto pl-3">
                   {p.format ? p.format(p.value) : p.value.toFixed(2)}

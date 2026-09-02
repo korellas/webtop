@@ -31,7 +31,7 @@ export default function StackBar({ services, memTotal }: Props) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline gap-2">
-        <span className="text-[9px] uppercase tracking-wider text-text-secondary">Stack</span>
+        <span className="text-[11px] uppercase tracking-wider text-text-secondary">Stack</span>
         <span className="text-[15px] font-semibold tabular-nums">{formatBytes(used)}</span>
         <span className="text-[11px] text-text-muted tabular-nums">
           of {formatBytes(memTotal)} · {Math.round(pct(used))}%

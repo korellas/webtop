@@ -58,9 +58,9 @@ export default function ServiceListItem({
   return (
     <li className="flex flex-col gap-0.5 px-4 py-2.5 border-b border-border/40">
       <div className="flex items-baseline gap-1.5 min-w-0">
-        <span className="text-[12px] font-medium truncate">{s.name}</span>
+        <span className="text-[13px] font-medium truncate">{s.name}</span>
         {s.port !== null && (
-          <span className="text-[10px] text-text-muted tabular-nums shrink-0">:{s.port}</span>
+          <span className="text-[11px] text-text-muted tabular-nums shrink-0">:{s.port}</span>
         )}
         <span
           className="ml-auto text-[11px] font-medium shrink-0"
@@ -108,7 +108,7 @@ export default function ServiceListItem({
       </div>
 
       {status.detail && (
-        <span className="text-[10px]" style={{ color: status.tone }}>
+        <span className="text-[11px]" style={{ color: status.tone }}>
           {status.detail}
         </span>
       )}

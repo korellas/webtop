@@ -96,7 +96,7 @@ export default function RamDetail({ onClose }: DetailProps) {
           {/* Pressure */}
           <div className="flex items-center justify-between p-2.5 bg-bg-hover/50 rounded-lg border border-border">
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-text-secondary">
+              <div className="text-[11px] uppercase tracking-wider text-text-secondary">
                 Memory Pressure
               </div>
               <div className="text-[13px] font-semibold mt-0.5" style={{ color: pressure.color }}>
@@ -104,7 +104,7 @@ export default function RamDetail({ onClose }: DetailProps) {
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[10px] uppercase tracking-wider text-text-secondary">Ratio</div>
+              <div className="text-[11px] uppercase tracking-wider text-text-secondary">Ratio</div>
               <div className="text-[13px] font-semibold tabular-nums mt-0.5">
                 {(pressureRatio * 100).toFixed(1)}%
               </div>
@@ -115,7 +115,7 @@ export default function RamDetail({ onClose }: DetailProps) {
           {swapUsed > 0 && (
             <div className="flex items-center justify-between p-2.5 bg-bg-hover/50 rounded-lg border border-border">
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-text-secondary">Swap</div>
+                <div className="text-[11px] uppercase tracking-wider text-text-secondary">Swap</div>
                 <div className="text-[13px] font-semibold mt-0.5 tabular-nums">
                   {formatGB(swapUsed, 2)}
                 </div>

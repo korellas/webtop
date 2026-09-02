@@ -247,7 +247,7 @@ export default function ChartGrid() {
           <span className="text-[11px] font-semibold text-text-primary/90 tracking-wide">
             Temperature
           </span>
-          <span className="text-[10px] text-text-muted leading-snug">
+          <span className="text-[11px] text-text-muted leading-snug">
             Not available — Apple Silicon only
           </span>
         </div>
@@ -419,14 +419,37 @@ export default function ChartGrid() {
     ],
   ];
 
+  /** Grid position -> chart name, mirroring `rows` above. Declared rather
+   *  than read off each element's React key, which is not a public field. */
+  const CELL_KEYS = [
+    ['cpu-gpu', 'temp'],
+    ['mem', 'power'],
+    ['net', 'disk'],
+  ] as const;
+
   return (
     <div
       className="
         flex flex-col md:grid md:grid-rows-3
-        flex-1 min-h-0
-        bg-bg-card border border-border rounded-lg overflow-hidden
+        shrink-0 md:flex-1 md:min-h-0
+        bg-bg-card border border-border rounded-card overflow-hidden
       "
     >
+      {/*
+        Below md this is a 1080px column that its parent scrolls, so it takes
+        its natural height — `flex-1 min-h-0` capped it at the viewport and
+        clipped the last cells instead of letting them scroll. From md up it
+        fills the viewport, because there every cell is on screen at once.
+
+        The cells are `shrink-0` for the same reason: a flex child will shrink
+        past an explicit height unless told not to, and they were being
+        squeezed from 180px to 118px.
+
+        Comments belong out here, never inside a `className` template. Tailwind
+        reads that string as a word list, not as CSS — a note about "the fixed
+        cell height" put `position: fixed` on every row and collapsed this
+        container to zero.
+      */}
       {rows.map((row, rIdx) => (
         <div
           key={rIdx}
@@ -440,8 +463,13 @@ export default function ChartGrid() {
           {row.map((cell, cIdx) => (
             <div
               key={cIdx}
+              // The chip strip scrolls the phone's chart column to a card by
+              // this name. A `data-` attribute rather than a ref map threaded
+              // through two components: the only thing anyone needs from a
+              // cell is its position, and a scroll is not state worth owning.
+              data-chart={CELL_KEYS[rIdx]?.[cIdx]}
               className={`
-                relative h-[180px] md:h-auto md:min-h-0
+                relative h-[180px] shrink-0 md:h-auto md:shrink md:min-h-0
                 ${cIdx > 0 ? 'border-t md:border-t-0 md:border-l border-border' : ''}
               `}
             >

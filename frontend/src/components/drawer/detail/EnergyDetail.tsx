@@ -163,7 +163,7 @@ export default function EnergyDetail({ onClose }: DetailProps) {
                         className="bg-bg-card border border-border-strong rounded-lg px-2.5 py-2 shadow-lg text-[11px]"
                         style={{ pointerEvents: 'none' }}
                       >
-                        <div className="text-text-muted text-[10px]">
+                        <div className="text-text-muted text-[11px]">
                           {formatBucketTooltip(ts, group)}
                         </div>
                         <div className="font-semibold tabular-nums">{formatWh(wh)}</div>
@@ -200,7 +200,7 @@ export default function EnergyDetail({ onClose }: DetailProps) {
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <span className="text-[9px] uppercase tracking-wider text-text-muted">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-text-muted">{label}</span>
       <span className="font-semibold tabular-nums">{value}</span>
     </div>
   );

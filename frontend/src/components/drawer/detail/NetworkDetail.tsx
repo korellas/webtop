@@ -186,7 +186,7 @@ export default function NetworkDetail({ onClose }: DetailProps) {
             </div>
             {/* Two bars per bucket need a key — the tooltip labels them too,
                 but that only helps on hover. */}
-            <div className="flex items-center gap-3 text-[10px] text-text-secondary">
+            <div className="flex items-center gap-3 text-[11px] text-text-secondary">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLORS.networkLight }} />
                 Sent
@@ -244,7 +244,7 @@ export default function NetworkDetail({ onClose }: DetailProps) {
                           className="bg-bg-card border border-border-strong rounded-lg px-2.5 py-2 shadow-lg text-[11px]"
                           style={{ pointerEvents: 'none' }}
                         >
-                          <div className="text-text-muted text-[10px] mb-1">
+                          <div className="text-text-muted text-[11px] mb-1">
                             {formatBucketTooltip(ts, group)}
                           </div>
                           <div className="flex items-center gap-1.5" style={{ color: COLORS.networkLight }}>
@@ -318,7 +318,7 @@ function InterfaceRow({ iface }: { iface: NetInterfaceInfo }) {
           </span>
         </div>
         {iface.link_speed_bps && (
-          <span className="text-[12px] font-semibold text-text-primary tabular-nums">
+          <span className="text-[13px] font-semibold text-text-primary tabular-nums">
             {formatSpeed(iface.link_speed_bps)}
           </span>
         )}
@@ -347,14 +347,14 @@ function InterfaceRow({ iface }: { iface: NetInterfaceInfo }) {
             <span className="text-[14px] font-semibold truncate">{w.ssid}</span>
           ) : (
             <span
-              className="text-[12px] italic text-text-muted truncate"
+              className="text-[13px] italic text-text-muted truncate"
               title="macOS 14+ hides Wi-Fi SSIDs from apps without Location Services permission."
             >
               SSID hidden by macOS privacy
             </span>
           )}
           {w?.security && w.security.toLowerCase() !== 'none' && (
-            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-bg-hover text-text-secondary">
+            <span className="text-[11px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-bg-hover text-text-secondary">
               {w.security}
             </span>
           )}
@@ -363,7 +363,7 @@ function InterfaceRow({ iface }: { iface: NetInterfaceInfo }) {
 
       {/* Wi-Fi stats grid */}
       {iface.kind === 'wifi' && w && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px] mb-2.5">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px] mb-2.5">
           {w.rssi_dbm !== null && (
             <Stat
               k="Signal"
@@ -391,7 +391,7 @@ function InterfaceRow({ iface }: { iface: NetInterfaceInfo }) {
       )}
 
       {/* Addresses */}
-      <div className="space-y-1 text-[12px] font-mono text-text-secondary mb-2">
+      <div className="space-y-1 text-[13px] font-mono text-text-secondary mb-2">
         {iface.ipv4.length > 0 && <InfoRow k="IPv4" v={iface.ipv4.join(', ')} />}
         {ipv6Global.length > 0 && <InfoRow k="IPv6" v={ipv6Global.join(', ')} />}
         {ipv6Local.length > 0 && !ipv6Global.length && (
@@ -402,7 +402,7 @@ function InterfaceRow({ iface }: { iface: NetInterfaceInfo }) {
       </div>
 
       {/* Live traffic */}
-      <div className="flex items-center gap-4 text-[12px] font-semibold tabular-nums">
+      <div className="flex items-center gap-4 text-[13px] font-semibold tabular-nums">
         <span className="flex items-center gap-1.5">
           <span style={{ color: COLORS.networkLight }}>▲</span>
           {formatMBps(iface.tx_bytes_sec)}
@@ -419,7 +419,7 @@ function InterfaceRow({ iface }: { iface: NetInterfaceInfo }) {
 function TotalStat({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <span className="text-[9px] uppercase tracking-wider text-text-muted">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-text-muted">{label}</span>
       <span className="font-semibold tabular-nums" style={{ color }}>{value}</span>
     </div>
   );
@@ -428,7 +428,7 @@ function TotalStat({ label, value, color }: { label: string; value: string; colo
 function Stat({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex items-baseline gap-2 min-w-0">
-      <span className="text-text-muted shrink-0 w-14 text-[10px] uppercase tracking-wider">{k}</span>
+      <span className="text-text-muted shrink-0 w-14 text-[11px] uppercase tracking-wider">{k}</span>
       <span className={`truncate ${mono ? 'font-mono text-[11px]' : ''}`}>{v}</span>
     </div>
   );
@@ -437,7 +437,7 @@ function Stat({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean })
 function InfoRow({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex gap-2">
-      <span className="w-10 text-text-muted shrink-0 text-[10px] uppercase tracking-wider">{k}</span>
+      <span className="w-10 text-text-muted shrink-0 text-[11px] uppercase tracking-wider">{k}</span>
       <span className="break-all text-text-primary">{v}</span>
     </div>
   );

@@ -614,7 +614,7 @@ export default function MetricChart({
                           {clock}
                         </span>
                         {offset && (
-                          <span className="text-[9px] text-text-muted tabular-nums">
+                          <span className="text-[11px] text-text-muted tabular-nums">
                             {offset}
                           </span>
                         )}
@@ -650,7 +650,7 @@ export default function MetricChart({
                         : entry.value.toFixed(2);
                       return (
                         <div key={entry.dataKey} className="flex items-center gap-2 text-[11px] leading-none">
-                          <span className="text-[10px] shrink-0" style={{ color: entry.color }}>━</span>
+                          <span className="text-[11px] shrink-0" style={{ color: entry.color }}>━</span>
                           <span className="text-text-secondary">{itemLabel}</span>
                           <span className="font-semibold tabular-nums text-text-primary ml-auto pl-3">
                             {formatted}
@@ -789,8 +789,11 @@ export default function MetricChart({
         troughs, totals, the core split — is pushed right, muted, and set
         behind a rule, because a peak is a different kind of fact from a
         current value and reading them as one list was the original mistake.
-        Only the third rank is dropped below `sm`, and losing it costs a card
-        nothing it cannot say.
+        The third rank appears from `xl` and not before. Below that the space
+        left beside the headline is ~117px against the ~273px it wants, and the
+        guide's rule for a narrow viewport is remove, never shrink — a clipped
+        row is the silent deletion this whole readout was built to stop. The
+        peaks it drops are still in the tooltip on hover.
       */}
       <div className="pointer-events-none absolute top-1 left-[38px] right-2 z-10 flex items-baseline gap-2">
         <span className="shrink-0 text-[13px] font-medium text-text-secondary">
@@ -819,7 +822,7 @@ export default function MetricChart({
         ))}
 
         {tier3.length > 0 && (
-          <span className="hidden sm:flex ml-auto min-w-0 items-baseline gap-2 overflow-hidden">
+          <span className="hidden xl:flex ml-auto min-w-0 items-baseline gap-2">
             {/* The rule is the whole point: it says "past here is a different
                 kind of number", which is what stops a peak reading as a
                 current value. */}

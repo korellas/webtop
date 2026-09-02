@@ -50,7 +50,7 @@ export default class ErrorBoundary extends Component<Props, State> {
           </div>
 
           <div className="bg-bg-card border border-border rounded-lg p-3">
-            <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
+            <div className="text-[11px] uppercase tracking-wider text-text-muted mb-1">
               Error
             </div>
             <pre className="text-xs whitespace-pre-wrap break-words text-danger">
@@ -60,10 +60,10 @@ export default class ErrorBoundary extends Component<Props, State> {
 
           {stack && (
             <div className="bg-bg-card border border-border rounded-lg p-3">
-              <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
+              <div className="text-[11px] uppercase tracking-wider text-text-muted mb-1">
                 Component stack
               </div>
-              <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-words text-text-secondary">
+              <pre className="text-[11px] leading-relaxed whitespace-pre-wrap break-words text-text-secondary">
                 {stack.trim()}
               </pre>
             </div>

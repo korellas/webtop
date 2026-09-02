@@ -109,7 +109,7 @@ export default function ProcessView({ query }: { query: string }) {
           */}
           <table className="table-fixed w-full border-collapse text-[11px] leading-4">
             <thead className="sticky top-0 z-10 bg-bg-sidebar">
-              <tr className="text-[9px] uppercase tracking-wider text-text-secondary">
+              <tr className="text-[11px] uppercase tracking-wider text-text-secondary">
                 <Th w="w-[52px] sm:w-[60px]" align="right" label="PID" k="pid" {...{ sortKey, sortDir, toggleSort }} />
                 <Th label="Process" k="name" {...{ sortKey, sortDir, toggleSort }} />
                 <Th w="hidden sm:table-cell sm:w-[84px]" label="User" k="user" {...{ sortKey, sortDir, toggleSort }} />
@@ -144,7 +144,7 @@ export default function ProcessView({ query }: { query: string }) {
 
       {/* Aggregate footer, the way Activity Monitor does it — the totals answer
           "is anything actually eating this machine" without reading every row. */}
-      <footer className="shrink-0 flex items-center gap-5 px-4 py-2 border-t border-border bg-bg-sidebar text-[10px] text-text-secondary">
+      <footer className="shrink-0 flex items-center gap-5 px-4 py-2 border-t border-border bg-bg-sidebar text-[11px] text-text-secondary">
         <span>
           CPU <span className="text-text-primary font-semibold tabular-nums">{totals.cpu.toFixed(1)}%</span>
         </span>
@@ -228,8 +228,8 @@ function DetailPanel({
     <aside className="w-52 shrink-0 border-l border-border bg-bg-sidebar overflow-auto thin-scroll">
       <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border">
         <div className="min-w-0">
-          <div className="text-[12px] font-semibold truncate">{p.name}</div>
-          <div className="text-[9px] text-text-muted">PID {p.pid}</div>
+          <div className="text-[13px] font-semibold truncate">{p.name}</div>
+          <div className="text-[11px] text-text-muted">PID {p.pid}</div>
         </div>
         <button
           type="button"
@@ -248,9 +248,9 @@ function DetailPanel({
       </dl>
       {p.cmd && (
         <div className="px-4 pb-4">
-          <div className="text-[10px] text-text-muted mb-1">Command</div>
+          <div className="text-[11px] text-text-muted mb-1">Command</div>
           <pre className="
-            text-[9px] leading-relaxed whitespace-pre-wrap break-all
+            text-[11px] leading-relaxed whitespace-pre-wrap break-all
             text-text-secondary bg-bg-card border border-border rounded p-2
           ">{p.cmd}</pre>
         </div>
@@ -262,7 +262,7 @@ function DetailPanel({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-text-muted text-[10px]">{label}</dt>
+      <dt className="text-text-muted text-[11px]">{label}</dt>
       <dd className="tabular-nums text-text-primary">{value}</dd>
     </div>
   );

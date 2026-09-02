@@ -190,7 +190,7 @@ export default function ServicesView() {
         */}
         <table className="hidden sm:table table-fixed w-full border-collapse text-[11px] leading-4">
           <thead className="sticky top-0 z-10 bg-bg-sidebar">
-            <tr className="text-[9px] uppercase tracking-wider text-text-secondary">
+            <tr className="text-[11px] uppercase tracking-wider text-text-secondary">
               {/* 568 px declared of the 782 px available inside the panel's
                   16 px inset, leaving ~214 px for the name — which needs 112 for
                   the longest ("model-worker :8000"). An earlier set spent 26 %
@@ -218,7 +218,7 @@ export default function ServicesView() {
               <tr>
                 <td
                   colSpan={COLUMN_COUNT}
-                  className="px-2 pt-3 pb-1 text-[9px] uppercase tracking-wider text-text-muted"
+                  className="px-2 pt-3 pb-1 text-[11px] uppercase tracking-wider text-text-muted"
                 >
                   {group}
                 </td>
@@ -247,7 +247,7 @@ export default function ServicesView() {
             <section key={group} aria-labelledby={`svc-group-${group}`}>
               <h3
                 id={`svc-group-${group}`}
-                className="px-2 pt-2.5 pb-1 text-[9px] uppercase tracking-wider text-text-muted"
+                className="px-2 pt-2.5 pb-1 text-[11px] uppercase tracking-wider text-text-muted"
               >
                 {group}
               </h3>
@@ -325,8 +325,8 @@ function Empty({ title, detail, hint }: { title: string; detail?: string; hint?:
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-1.5 px-8 py-12 text-center">
       <span className="text-xs font-semibold text-text-secondary">{title}</span>
-      {detail && <span className="text-[10px] text-danger max-w-md">{detail}</span>}
-      {hint && <span className="text-[10px] text-text-muted max-w-md">{hint}</span>}
+      {detail && <span className="text-[11px] text-danger max-w-md">{detail}</span>}
+      {hint && <span className="text-[11px] text-text-muted max-w-md">{hint}</span>}
     </div>
   );
 }

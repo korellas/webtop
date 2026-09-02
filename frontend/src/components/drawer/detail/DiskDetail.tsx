@@ -90,15 +90,15 @@ function DiskRow({ disk }: { disk: DiskInfo }) {
             </span>
           )}
           {disk.is_removable && (
-            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning/20 text-warning border border-warning/40">
+            <span className="text-[11px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning/20 text-warning border border-warning/40">
               removable
             </span>
           )}
         </div>
-        <span className="text-[10px] text-text-muted tabular-nums">{pct.toFixed(0)}%</span>
+        <span className="text-[11px] text-text-muted tabular-nums">{pct.toFixed(0)}%</span>
       </div>
 
-      <div className="flex items-center gap-2 text-[10px] text-text-secondary mb-2">
+      <div className="flex items-center gap-2 text-[11px] text-text-secondary mb-2">
         <span className="font-mono truncate">{disk.mount_point}</span>
         <span className="text-text-muted">•</span>
         <span className="uppercase">{disk.fs_type}</span>
@@ -116,7 +116,7 @@ function DiskRow({ disk }: { disk: DiskInfo }) {
         />
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-text-secondary tabular-nums">
+      <div className="flex items-center justify-between text-[11px] text-text-secondary tabular-nums">
         <span>
           <span className="font-semibold text-text-primary">{formatGB(disk.used_bytes, 0)}</span>
           {' '}used

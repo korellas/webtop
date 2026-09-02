@@ -121,7 +121,7 @@ export default function FolderTree() {
         <p className="text-xs text-text-secondary">
           {scanning ? 'Measuring folder sizes…' : 'Folder sizes have not been measured yet.'}
         </p>
-        <p className="mt-1 text-[10px] text-text-muted">
+        <p className="mt-1 text-[11px] text-text-muted">
           The first scan runs a couple of minutes after startup, then every 6 hours.
         </p>
         {!scanning && (
@@ -150,7 +150,7 @@ export default function FolderTree() {
       <header className="mb-2 flex items-baseline justify-between gap-2">
         <Breadcrumb stack={stack} onNavigate={setStack} />
         <div className="flex shrink-0 items-center gap-2">
-          {verifying && <span className="text-[9px] text-text-muted">checking…</span>}
+          {verifying && <span className="text-[11px] text-text-muted">checking…</span>}
           <button
             type="button"
             onClick={onRescan}
@@ -160,7 +160,7 @@ export default function FolderTree() {
                 ? `Full scan ${formatAgo(data.last_full_scan_at)}`
                 : undefined
             }
-            className="rounded px-1.5 py-0.5 text-[10px] text-text-muted transition-colors
+            className="rounded px-1.5 py-0.5 text-[11px] text-text-muted transition-colors
                        hover:bg-bg-hover hover:text-text-primary disabled:opacity-40
                        focus-visible:outline-2 focus-visible:outline-offset-2
                        focus-visible:outline-storage"
@@ -268,7 +268,7 @@ function FolderBar({
       </span>
 
       <span
-        className={`w-14 shrink-0 text-right text-[9px] tabular-nums ${
+        className={`w-14 shrink-0 text-right text-[11px] tabular-nums ${
           fresh ? 'text-gpu' : 'text-text-muted'
         }`}
       >
@@ -297,7 +297,7 @@ function FolderBar({
       )}
 
       {row.unreadable > 0 && (
-        <p className="pl-1 text-[9px] text-warning">
+        <p className="pl-1 text-[11px] text-warning">
           {row.unreadable} item{row.unreadable === 1 ? '' : 's'} unreadable — size is a lower bound
         </p>
       )}

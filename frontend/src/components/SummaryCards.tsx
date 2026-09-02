@@ -129,15 +129,59 @@ export default function SummaryCards() {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 /**
+ * Which chart each chip is about.
+ *
+ * Six cells and eight chips, so this is many-to-one: GPU rides the CPU card,
+ * ENERGY rides Power, and both disk chips point at Disk I/O.
+ */
+const CHIP_CHART: Record<string, string> = {
+  CPU: 'cpu-gpu',
+  GPU: 'cpu-gpu',
+  RAM: 'mem',
+  Disk: 'disk',
+  'I/O': 'disk',
+  Net: 'net',
+  Power: 'power',
+  Energy: 'power',
+};
+
+/**
+ * Take the phone's chart column to the card a chip is about.
+ *
+ * Six cells at 180px is a 1080px scroll on a phone, and the chip strip sits
+ * above all of it naming things the reader cannot see — so a chip that reports
+ * a number and cannot take you to its history is an index with no page
+ * numbers. Interactive chips still open their drawer on top; this just means
+ * that when the drawer is dismissed, the chart it was about is the one on
+ * screen.
+ *
+ * A no-op on a desktop, where every cell is already visible and
+ * `scrollIntoView` would move nothing.
+ */
+function scrollToChart(label: string) {
+  const key = CHIP_CHART[label];
+  if (!key) return;
+  const cell = document.querySelector(`[data-chart="${key}"]`);
+  cell?.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'start',
+  });
+}
+
+/**
  * Shared class names for both the clickable and non-clickable chip variants
  * so they stay visually identical apart from the interactive affordances.
  */
 const CHIP_BASE =
-  'flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border rounded-card flex-1 min-w-[144px]';
-// 144, not 108: the 30 px gauge, the gaps and `px-3` leave the text column
-// whatever remains, and at 108 that was 47 px — enough for the value but not
-// for any sub-line, so `P2% E22%`, the power split and `prev 18.43 kWh` were
-// all truncated at every width below `lg`. The widest sub measures 77 px.
+  'flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border rounded-card flex-1 min-w-[156px]';
+// 152, and it is the sub-line that sets it. The gauge (30), the gaps (8) and
+// `px-3` (24) come off the top, so the text column gets whatever is left, and
+// the longest sub — `prev 18.43 kWh` — measures 92px at the 11px mono the type
+// scale gives it, so the box has to be 156. design-guide.md §3 fixes this at
+// 144 on the basis of an 86px
+// sub, which is that same string at 10px sans; 144 truncated the energy and
+// power chips at every width below 1512. Raised rather than shrinking the type,
+// because the scale is the part with an accessibility floor under it.
 /**
  * Thresholds, from the token sheet. A chip past one changes its *border* and
  * nothing else.
@@ -216,7 +260,18 @@ function MiniChip({
   const border = SEVERITY_BORDER[sev];
 
   if (!card) {
-    return <div className={`${CHIP_BASE} ${border} text-left`}>{content}</div>;
+    // No drawer worth opening, but on a phone it can still be the index entry
+    // for its chart — which is the whole of what it can usefully do there.
+    return (
+      <button
+        type="button"
+        aria-label={`Scroll to ${label} chart`}
+        onClick={() => scrollToChart(label)}
+        className={`${CHIP_BASE} ${border} text-left md:cursor-default`}
+      >
+        {content}
+      </button>
+    );
   }
 
   const isActive = openCard === card;
@@ -225,7 +280,7 @@ function MiniChip({
       type="button"
       aria-label={`Open ${label} detail`}
       aria-expanded={isActive}
-      onClick={(e) => toggle(card, captureAnchor(e))}
+      onClick={(e) => { scrollToChart(label); toggle(card, captureAnchor(e)); }}
       className={`${CHIP_BASE} ${border} ${CHIP_INTERACTIVE} text-left ${
         isActive ? 'bg-bg-hover border-border-strong' : ''
       }`}
@@ -272,7 +327,7 @@ function MiniDualChip({
               <span className="font-mono text-[13px] font-semibold tabular-nums leading-tight inline-block text-right min-w-[3.2em]">
                 {num}
               </span>
-              <span className="text-[9px] text-text-secondary leading-tight shrink-0">{unit}</span>
+              <span className="text-[11px] text-text-secondary leading-tight shrink-0">{unit}</span>
             </div>
           );
         })}
@@ -285,7 +340,18 @@ function MiniDualChip({
   const border = SEVERITY_BORDER.ok;
 
   if (!card) {
-    return <div className={`${CHIP_BASE} ${border} text-left`}>{content}</div>;
+    // No drawer worth opening, but on a phone it can still be the index entry
+    // for its chart — which is the whole of what it can usefully do there.
+    return (
+      <button
+        type="button"
+        aria-label={`Scroll to ${label} chart`}
+        onClick={() => scrollToChart(label)}
+        className={`${CHIP_BASE} ${border} text-left md:cursor-default`}
+      >
+        {content}
+      </button>
+    );
   }
 
   const isActive = openCard === card;
@@ -294,7 +360,7 @@ function MiniDualChip({
       type="button"
       aria-label={`Open ${label} detail`}
       aria-expanded={isActive}
-      onClick={(e) => toggle(card, captureAnchor(e))}
+      onClick={(e) => { scrollToChart(label); toggle(card, captureAnchor(e)); }}
       className={`${CHIP_BASE} ${CHIP_INTERACTIVE} text-left ${
         isActive ? 'bg-bg-hover border-border-strong' : ''
       }`}

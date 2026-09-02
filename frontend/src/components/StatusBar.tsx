@@ -46,7 +46,7 @@ export default function StatusBar() {
           height by never needing a second row, so identity collapses to a
           single `·`-joined string that truncates rather than pushing the bar
           taller. Dropped entirely on a phone, where it truncated to nothing. */}
-      <span className="hidden sm:block text-[10px] text-text-secondary truncate min-w-0 leading-none">
+      <span className="hidden sm:block text-[11px] text-text-secondary truncate min-w-0 leading-none">
         <span className="font-semibold text-text-primary">{info?.model ?? 'webtop'}</span>
         {/* `lg`, not `md`: at 768 px the joined string measured 256 px into a
             118 px slot, so it truncated mid-word on every tablet. */}
@@ -66,13 +66,13 @@ export default function StatusBar() {
         {historyError && (
           <span
             title={historyError}
-            className="text-[10px] px-1.5 py-0.5 rounded bg-danger/15 text-danger font-medium"
+            className="text-[11px] px-1.5 py-0.5 rounded bg-danger/15 text-danger font-medium"
           >
             history failed
           </span>
         )}
         <span
-          className="flex items-center gap-1.5 text-[10px] text-text-secondary"
+          className="flex items-center gap-1.5 text-[11px] text-text-secondary"
           title={`WebSocket ${wsStatus}`}
         >
           <span

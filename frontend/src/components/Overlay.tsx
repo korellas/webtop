@@ -103,7 +103,7 @@ export default function Overlay({
           height, paired there with exactly this kind of compact table.
         */}
         <div className="shrink-0 flex items-center gap-3 px-4 h-10 border-b border-border bg-bg-sidebar">
-          <span className="text-[12px] font-semibold">{title}</span>
+          <span className="text-[13px] font-semibold">{title}</span>
           {actions}
           <button
             type="button"

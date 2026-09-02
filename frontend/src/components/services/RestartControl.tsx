@@ -81,7 +81,7 @@ export function ConfirmPrompt({ name, busy, onCancel, onConfirm, dense }: Confir
         type="button"
         onClick={onCancel}
         className={`
-          inline-flex items-center px-1.5 rounded text-[10px] leading-none
+          inline-flex items-center px-1.5 rounded text-[11px] leading-none
           text-text-muted hover:text-text-primary ${size}
         `}
       >
@@ -93,7 +93,7 @@ export function ConfirmPrompt({ name, busy, onCancel, onConfirm, dense }: Confir
         disabled={busy}
         aria-label={`Confirm restart of ${name}`}
         className={`
-          inline-flex items-center px-1.5 rounded text-[10px] font-semibold leading-none
+          inline-flex items-center px-1.5 rounded text-[11px] font-semibold leading-none
           bg-danger/15 text-danger hover:bg-danger/25
           disabled:opacity-50 transition-colors ${size}
         `}
@@ -193,7 +193,7 @@ export function StopConfirm({
         type="button"
         onClick={onCancel}
         className={`
-          inline-flex items-center px-1.5 rounded text-[10px] leading-none
+          inline-flex items-center px-1.5 rounded text-[11px] leading-none
           text-text-muted hover:text-text-primary ${size}
         `}
       >
@@ -205,7 +205,7 @@ export function StopConfirm({
         disabled={busy}
         aria-label={`Confirm stop of ${name}`}
         className={`
-          inline-flex items-center px-1.5 rounded text-[10px] font-semibold leading-none
+          inline-flex items-center px-1.5 rounded text-[11px] font-semibold leading-none
           bg-danger/15 text-danger hover:bg-danger/25
           disabled:opacity-50 transition-colors ${size}
         `}

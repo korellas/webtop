@@ -47,7 +47,7 @@ export default function PowerDetail({ onClose }: DetailProps) {
             <PowerRow label="GPU" value={gpuW} maxW={maxW} color={COLORS.power} />
             <PowerRow label="Other" value={otherW} maxW={maxW} color={COLORS.power} />
           </div>
-          <div className="text-[10px] text-text-muted mt-3 leading-relaxed">
+          <div className="text-[11px] text-text-muted mt-3 leading-relaxed">
             “Other” includes DRAM, display, Wi-Fi, SoC fabric, and the ANE.
           </div>
         </section>
@@ -123,7 +123,7 @@ function BatteryBlock({ battery }: { battery: BatteryInfo }) {
         </div>
 
         {(battery.cycle_count !== null || battery.health_percent !== null) && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-text-muted mt-2 pt-2 border-t border-border">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted mt-2 pt-2 border-t border-border">
             {battery.cycle_count !== null && (
               <span>
                 Cycle <span className="tabular-nums font-semibold">{battery.cycle_count}</span>

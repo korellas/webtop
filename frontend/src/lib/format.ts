@@ -16,7 +16,19 @@ export function formatGB(bytes: number, decimals: number = 1): string {
   return `${gb.toFixed(decimals)} GB`;
 }
 
-export function formatPercent(value: number): string {
+/**
+ * The app's single percentage rule: one decimal below 10, integer above.
+ *
+ * There is exactly one of these on purpose. The chip used to read `CPU 3%`
+ * while the legend three inches below it read `CPU 3.1%` at the same instant,
+ * because each had rounded for itself. A local `Math.round()` on a percentage
+ * is now a bug by definition.
+ *
+ * Null-tolerant because a missing reading is `null`, not zero, and `—` is the
+ * honest rendering of one.
+ */
+export function formatPercent(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '—';
   return `${value < 10 ? value.toFixed(1) : Math.round(value)}%`;
 }
 

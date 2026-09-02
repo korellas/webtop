@@ -1,7 +1,7 @@
 import { useMetricsStore } from '../store/metrics-store';
 import { useSystemStore } from '../store/system-store';
 import { useDrawerStore, type CardKey, type AnchorPos } from '../store/drawer-store';
-import { formatGB, formatWatts, formatWh, formatMBps } from '../lib/format';
+import { formatGB, formatWatts, formatWh, formatMBps, formatPercent } from '../lib/format';
 import { COLORS } from '../lib/colors';
 import RingGauge from './RingGauge';
 
@@ -62,22 +62,23 @@ export default function SummaryCards() {
       <MiniChip
         card="cpu"
         label="CPU"
-        value={`${Math.round(cpuTotal)}%`}
-        sub={`P${Math.round(latest.cpu_p_cores)}% E${Math.round(latest.cpu_e_cores)}%`}
+        value={formatPercent(cpuTotal)}
+        sub={`P${formatPercent(latest.cpu_p_cores)} E${formatPercent(latest.cpu_e_cores)}`}
         gauge={<RingGauge value={cpuTotal} color={COLORS.compute} size={30} strokeWidth={2.5} />}
       />
       {/* GPU — non-clickable: no drill-down view worth showing (unified memory, no VRAM). */}
       <MiniChip
         label="GPU"
-        value={`${latest.gpu_usage < 10 ? latest.gpu_usage.toFixed(1) : Math.round(latest.gpu_usage)}%`}
+        value={formatPercent(latest.gpu_usage)}
         sub={`${info.gpu_core_count}-core`}
         gauge={<RingGauge value={latest.gpu_usage} color={COLORS.gpu} size={30} strokeWidth={2.5} />}
       />
       <MiniChip
         card="ram"
         label="RAM"
-        value={`${memPct.toFixed(0)}%`}
+        value={formatPercent(memPct)}
         sub={formatGB(latest.mem_used, 1)}
+        severity={severity(memPct, THRESHOLD.mem)}
         gauge={<RingGauge value={memPct} color={COLORS.memory} size={30} strokeWidth={2.5} />}
       />
       <MiniChip
@@ -132,11 +133,44 @@ export default function SummaryCards() {
  * so they stay visually identical apart from the interactive affordances.
  */
 const CHIP_BASE =
-  'flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border border-border rounded-lg flex-1 min-w-[144px]';
+  'flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border rounded-card flex-1 min-w-[144px]';
 // 144, not 108: the 30 px gauge, the gaps and `px-3` leave the text column
 // whatever remains, and at 108 that was 47 px — enough for the value but not
 // for any sub-line, so `P2% E22%`, the power split and `prev 18.43 kWh` were
 // all truncated at every width below `lg`. The widest sub measures 77 px.
+/**
+ * Thresholds, from the token sheet. A chip past one changes its *border* and
+ * nothing else.
+ *
+ * Not a filled background and emphatically not a blink. This screen redraws
+ * twice a second and is meant to be left open on a second monitor; something
+ * flashing in the corner of the eye is not information, it is a thing you
+ * learn to stop seeing. A border is legible at a glance, survives peripheral
+ * vision, and stays out of the way of the number it is about.
+ *
+ * Colour never carries the meaning alone — the value it qualifies is right
+ * there, in figures, at 15px.
+ */
+export type Severity = 'ok' | 'warn' | 'crit';
+
+const THRESHOLD = {
+  temp: { warn: 85, crit: 95 },   /* °C  */
+  mem: { warn: 85, crit: 95 },    /* % of total */
+} as const;
+
+function severity(value: number | null | undefined, at: { warn: number; crit: number }): Severity {
+  if (value == null || Number.isNaN(value)) return 'ok';
+  if (value >= at.crit) return 'crit';
+  if (value >= at.warn) return 'warn';
+  return 'ok';
+}
+
+const SEVERITY_BORDER: Record<Severity, string> = {
+  ok: 'border-border',
+  warn: 'border-warning',
+  crit: 'border-danger',
+};
+
 const CHIP_INTERACTIVE =
   'hover:bg-bg-hover hover:border-border-strong active:scale-[0.98] transition-[background-color,border-color,transform] duration-150 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong';
 
@@ -146,6 +180,7 @@ function MiniChip({
   value,
   sub,
   gauge,
+  severity: sev = 'ok',
 }: {
   /** Omit to render as a non-clickable display chip. */
   card?: CardKey;
@@ -153,6 +188,7 @@ function MiniChip({
   value: string;
   sub?: string;
   gauge?: React.ReactNode;
+  severity?: Severity;
 }) {
   const toggle = useDrawerStore((s) => s.toggle);
   const openCard = useDrawerStore((s) => s.openCard);
@@ -161,14 +197,14 @@ function MiniChip({
     <>
       {gauge}
       <div className="text-right min-w-0">
-        <div className="text-[10px] uppercase tracking-wider text-text-secondary leading-none mb-1">
+        <div className="font-mono text-[11px] uppercase tracking-[.08em] text-text-secondary leading-none mb-1">
           {label}
         </div>
-        <div className="text-[12px] font-bold tabular-nums leading-tight">{value}</div>
+        <div className="font-mono text-[15px] font-semibold tabular-nums leading-tight">{value}</div>
         {sub && (
           <div
             title={sub}
-            className="text-[10px] text-text-secondary tabular-nums leading-tight truncate"
+            className="font-mono text-[11px] text-text-muted tabular-nums leading-tight truncate"
           >
             {sub}
           </div>
@@ -177,8 +213,10 @@ function MiniChip({
     </>
   );
 
+  const border = SEVERITY_BORDER[sev];
+
   if (!card) {
-    return <div className={`${CHIP_BASE} text-left`}>{content}</div>;
+    return <div className={`${CHIP_BASE} ${border} text-left`}>{content}</div>;
   }
 
   const isActive = openCard === card;
@@ -188,7 +226,7 @@ function MiniChip({
       aria-label={`Open ${label} detail`}
       aria-expanded={isActive}
       onClick={(e) => toggle(card, captureAnchor(e))}
-      className={`${CHIP_BASE} ${CHIP_INTERACTIVE} text-left ${
+      className={`${CHIP_BASE} ${border} ${CHIP_INTERACTIVE} text-left ${
         isActive ? 'bg-bg-hover border-border-strong' : ''
       }`}
     >
@@ -215,7 +253,7 @@ function MiniDualChip({
     <>
       {gauge}
       <div className="text-right">
-        <div className="text-[10px] uppercase tracking-wider text-text-secondary leading-none mb-1">
+        <div className="font-mono text-[11px] uppercase tracking-[.08em] text-text-secondary leading-none mb-1">
           {label}
         </div>
         {rows.map((row, i) => {
@@ -226,12 +264,12 @@ function MiniDualChip({
           return (
             <div key={i} className="flex items-center justify-end gap-0.5">
               <span
-                className="text-[10px] font-semibold w-2.5 text-center shrink-0"
+                className="font-mono text-[11px] font-semibold w-2.5 text-center shrink-0"
                 style={{ color: row.color }}
               >
                 {row.icon}
               </span>
-              <span className="text-[11px] font-bold tabular-nums leading-tight inline-block text-right min-w-[3.2em]">
+              <span className="font-mono text-[13px] font-semibold tabular-nums leading-tight inline-block text-right min-w-[3.2em]">
                 {num}
               </span>
               <span className="text-[9px] text-text-secondary leading-tight shrink-0">{unit}</span>
@@ -242,8 +280,12 @@ function MiniDualChip({
     </>
   );
 
+  // Neither of this variant's metrics is a proportion of a ceiling, so
+  // there is nothing here for a threshold to be crossed.
+  const border = SEVERITY_BORDER.ok;
+
   if (!card) {
-    return <div className={`${CHIP_BASE} text-left`}>{content}</div>;
+    return <div className={`${CHIP_BASE} ${border} text-left`}>{content}</div>;
   }
 
   const isActive = openCard === card;

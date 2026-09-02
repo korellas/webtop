@@ -149,8 +149,8 @@ export default function DropdownPanel({
         }}
         className="
           fixed z-[90]
-          bg-bg-card border border-border-strong
-          rounded-lg shadow-2xl
+          bg-bg-elevated border border-border-strong
+          rounded-panel shadow-2xl
           flex flex-col
           motion-reduce:transition-none
           outline-none
@@ -183,12 +183,12 @@ function PointerNotch({ localX }: { localX: number }) {
       <svg width="14" height="8" viewBox="0 0 14 8" fill="none">
         <path
           d="M7 0L14 8H0L7 0Z"
-          fill="var(--color-bg-card)"
+          fill="var(--color-bg-elevated)"
           stroke="var(--color-border-strong)"
           strokeWidth="1"
         />
         {/* Hide the bottom edge of the triangle so the panel border looks continuous */}
-        <rect x="1" y="7.5" width="12" height="1" fill="var(--color-bg-card)" />
+        <rect x="1" y="7.5" width="12" height="1" fill="var(--color-bg-elevated)" />
       </svg>
     </div>
   );

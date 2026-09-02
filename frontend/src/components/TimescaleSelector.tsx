@@ -29,7 +29,7 @@ export default function TimescaleSelector() {
   return (
     <div className="flex flex-col gap-1.5 text-[10px]">
       <div className="flex items-center gap-1.5 flex-wrap">
-        <div className="flex bg-bg-card border border-border rounded-md overflow-hidden">
+        <div className="flex bg-bg-card border border-border rounded-control overflow-hidden">
           {SCALES.map((s) => (
             <button
               key={s}
@@ -47,7 +47,7 @@ export default function TimescaleSelector() {
         <button
           onClick={toggleAutoscale}
           title="Toggle Y-axis autoscale"
-          className={`px-2 min-h-7 flex items-center justify-center border rounded-md cursor-pointer transition-colors ${
+          className={`px-2 min-h-7 flex items-center justify-center border rounded-control cursor-pointer transition-colors ${
             autoscale
               ? 'bg-bg-hover border-border-strong text-text-primary font-semibold'
               : 'bg-bg-card border-border text-text-secondary hover:text-text-primary'
@@ -118,7 +118,7 @@ function ThemeToggle() {
         aria-label={`Theme: ${current.label}. Change to ${next.label}`}
         className="
           sm:hidden flex items-center justify-center px-1 min-h-7 min-w-6
-          bg-bg-card border border-border rounded-md
+          bg-bg-card border border-border rounded-control
           text-text-secondary cursor-pointer transition-colors
         "
       >
@@ -126,7 +126,7 @@ function ThemeToggle() {
       </button>
 
       <div
-        className="hidden sm:flex bg-bg-card border border-border rounded-md overflow-hidden"
+        className="hidden sm:flex bg-bg-card border border-border rounded-control overflow-hidden"
         role="radiogroup"
         aria-label="Theme"
       >

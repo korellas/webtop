@@ -103,7 +103,7 @@ export default function FullscreenToggle() {
       title={error ? `${label} — ${error}` : label}
       className={`
         flex items-center justify-center px-1 min-h-7 min-w-6
-        bg-bg-card border rounded-md cursor-pointer transition-colors
+        bg-bg-card border rounded-control cursor-pointer transition-colors
         ${error
           ? 'border-danger text-danger'
           : active

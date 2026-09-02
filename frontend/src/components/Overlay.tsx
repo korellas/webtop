@@ -92,7 +92,7 @@ export default function Overlay({
         }}
         className="
           relative min-w-0 flex flex-col overlay-panel
-          bg-bg-primary border border-border-strong rounded-xl
+          bg-bg-elevated border border-border-strong rounded-panel
           shadow-2xl overflow-hidden
         "
       >
@@ -111,7 +111,7 @@ export default function Overlay({
             aria-label="Close"
             title="Close (Esc)"
             className="
-              ml-auto w-6 h-6 rounded flex items-center justify-center
+              ml-auto w-7 h-7 rounded-control flex items-center justify-center
               text-text-muted hover:text-text-primary hover:bg-bg-hover
               transition-colors
             "

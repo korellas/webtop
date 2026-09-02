@@ -129,7 +129,9 @@ export default function ServicesView() {
       {(faults.length > 0 || absent.length > 0 || fetchError) && (
         <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-border text-[11px]">
           {/*
-            Two tones, because this line carries two different kinds of news.
+            Counts, not sentences, and the border carries the tone.
+
+            Two kinds of news share this line.
             `unhealthy` and `down` are the ones worth a colour: something that
             should be up is not. `unregistered` is a service the manifest
             declares and this machine has simply not installed — `STATE_META`
@@ -137,19 +139,25 @@ export default function ServicesView() {
             its own Status cell anyway. Naming each of those in `text-danger`
             printed a wall of red above a table that then repeated the very
             same facts, and made the ordinary state of a machine that isn't
-            running every declared model server look like an outage. The count
-            is enough; the names are in the `title`.
+            running every declared model server look like an outage.
+
+            Even for genuine faults a prose list is the wrong shape: it is
+            frightening before it is read and redundant after, because the
+            table below names every one of them in its own Status cell and
+            sorts them to the top. A count is the part the header can say that
+            the table cannot. The names live in the `title`.
           */}
           {faults.length > 0 && (
-            <span className="text-danger font-medium">
-              {faults
-                .map((s) => `${s.name} ${STATE_META[s.state].label.toLowerCase()}`)
-                .join(' · ')}
+            <span
+              className="font-mono text-[11px] px-1.5 py-0.5 rounded-control border border-danger text-danger"
+              title={faults.map((s) => `${s.name} ${STATE_META[s.state].label.toLowerCase()}`).join(', ')}
+            >
+              {faults.length} down
             </span>
           )}
           {absent.length > 0 && (
             <span
-              className="text-text-muted"
+              className="font-mono text-[11px] px-1.5 py-0.5 rounded-control border border-border text-text-muted"
               title={absent.map((s) => s.name).join(', ')}
             >
               {absent.length} not installed

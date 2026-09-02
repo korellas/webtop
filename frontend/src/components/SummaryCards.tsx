@@ -173,7 +173,8 @@ function scrollToChart(label: string) {
  * so they stay visually identical apart from the interactive affordances.
  */
 const CHIP_BASE =
-  'flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border rounded-card flex-1 min-w-[160px]';
+  'flex items-center justify-between gap-0 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 '
+  + 'bg-bg-card border rounded-card flex-1 min-w-[104px] sm:min-w-[160px]';
 // 152, and it is the sub-line that sets it. The gauge (30), the gaps (8) and
 // `px-3` (24) come off the top, so the text column gets whatever is left, and
 // the longest sub — `prev 18.43 kWh` — measures 92px at the 11px mono the type
@@ -270,16 +271,32 @@ function MiniChip({
 
   const content = (
     <>
-      {gauge}
-      <div className="text-right min-w-0">
-        <div className="font-mono text-[11px] uppercase tracking-[.08em] text-text-secondary leading-none mb-1">
+      {/*
+        The ring is desktop-only. It is the most expensive thing on a chip —
+        30px of width plus its gap, on a strip where a 390px phone was showing
+        two chips out of eight — and it is the least load-bearing: it says
+        "roughly this fraction" beside a figure that says it exactly. Below
+        `sm` the number keeps the job and the ring stands down.
+      */}
+      <span className="hidden sm:contents">{gauge}</span>
+      {/*
+        One line on a phone, stacked from `sm`.
+
+        Stacking costs a whole text line of height on the one surface where
+        height is the scarce thing: the strip is chrome sitting above six
+        charts that have to share what is left. Laid out as `LABEL value` it
+        is the same two facts in half the vertical space, which is what buys
+        the grid its third row back.
+      */}
+      <div className="text-right min-w-0 flex items-baseline gap-1.5 whitespace-nowrap sm:whitespace-normal sm:block">
+        <div className="font-mono text-[11px] uppercase tracking-[.08em] text-text-secondary leading-none sm:mb-1 shrink-0">
           {label}
         </div>
         <div className="font-mono text-[15px] font-semibold tabular-nums leading-tight">{value}</div>
         {sub && (
           <div
             title={sub}
-            className="font-mono text-[11px] text-text-muted tabular-nums leading-tight truncate"
+            className="hidden sm:block font-mono text-[11px] text-text-muted tabular-nums leading-tight truncate"
           >
             {sub}
           </div>
@@ -336,18 +353,21 @@ function MiniDualChip({
 
   const content = (
     <>
-      {gauge}
-      <div className="text-right">
-        <div className="font-mono text-[11px] uppercase tracking-[.08em] text-text-secondary leading-none mb-1">
+      <span className="hidden sm:contents">{gauge}</span>
+      <div className="text-right flex items-baseline gap-1.5 whitespace-nowrap sm:whitespace-normal sm:block">
+        <div className="font-mono text-[11px] uppercase tracking-[.08em] text-text-secondary leading-none sm:mb-1 shrink-0">
           {label}
         </div>
+        {/* Two rows stacked would make this chip taller than the other six,
+            and `align-items: stretch` would hand that height to all of them. */}
+        <div className="flex items-baseline gap-2 sm:block">
         {rows.map((row, i) => {
           // Split "1.300 MB/s" → num="1.300" unit="MB/s" so the unit never shifts
           const spaceIdx = row.value.indexOf(' ');
           const num = spaceIdx >= 0 ? row.value.slice(0, spaceIdx) : row.value;
           const unit = spaceIdx >= 0 ? row.value.slice(spaceIdx + 1) : '';
           return (
-            <div key={i} className="flex items-center justify-end gap-0.5">
+            <div key={i} className="flex items-baseline justify-end gap-0.5">
               <span
                 className="font-mono text-[11px] font-semibold w-2.5 text-center shrink-0"
                 style={{ color: row.color }}
@@ -357,10 +377,11 @@ function MiniDualChip({
               <span className="font-mono text-[13px] font-semibold tabular-nums leading-tight inline-block text-right min-w-[3.2em]">
                 {num}
               </span>
-              <span className="text-[11px] text-text-secondary leading-tight shrink-0">{unit}</span>
+              <span className="hidden sm:inline text-[11px] text-text-secondary leading-tight shrink-0">{unit}</span>
             </div>
           );
         })}
+        </div>
       </div>
     </>
   );

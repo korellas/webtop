@@ -180,6 +180,19 @@ function findExtreme(
  * they were the last thing still competing with the plot for the same few
  * pixels. The current value is the 20px headline at the top of the card.
  */
+/**
+ * "0.058 MB/s" -> ["0.058", "MB/s"], "43\u00b0C" -> ["43", "\u00b0C"], "12%" -> ["12", "%"].
+ *
+ * The reading and its unit want different weights: one changes every two
+ * seconds and the other never does. Splitting on the first character that is
+ * not part of a number covers every formatter in `lib/format.ts` without any
+ * of them having to know about this.
+ */
+function splitUnit(v: string): [string, string] {
+  const m = v.match(/^([\d.,\-]+)\s*(.*)$/);
+  return m ? [m[1], m[2]] : [v, ''];
+}
+
 const CURSOR_STYLE = {
   stroke: 'var(--color-chart-axis)',
   strokeWidth: 1,
@@ -724,6 +737,12 @@ export default function MetricChart({
         troughs, totals, the core split — is pushed right, muted, and set
         behind a rule, because a peak is a different kind of fact from a
         current value and reading them as one list was the original mistake.
+        A phone cell is 186px wide with 38 of that spent on the axis, so only
+        the title and the headline fit — the co-star waits for `sm` and the
+        third rank for `xl`. Overflowing instead is not an option here: these
+        cells share edges, so a legend that runs long does not clip politely,
+        it prints itself across the neighbouring chart.
+
         The third rank appears from `xl` and not before. Below that the space
         left beside the headline is ~117px against the ~273px it wants, and the
         guide's rule for a narrow viewport is remove, never shrink — a clipped
@@ -731,24 +750,40 @@ export default function MetricChart({
         peaks it drops are still in the tooltip on hover.
       */}
       <div className="pointer-events-none absolute top-1 left-[38px] right-2 z-10 flex items-baseline gap-2">
-        <span className="shrink-0 text-[13px] font-medium text-text-secondary">
+        {/* The title yields, never the number. Principle 1 of the guide is
+            that chrome is not allowed to outrank data, and on a 186px cell
+            something has to give — so the title truncates and the headline
+            is `shrink-0`. */}
+        <span className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
           {title}
         </span>
 
-        {tier1.map((l) => (
-          <span key={`t1-${l.label}`} className="shrink-0 flex items-baseline gap-1">
-            <span
-              className="font-mono text-[20px] font-bold tabular-nums leading-none"
-              style={{ color: l.color }}
-            >
-              {l.value ?? '—'}
+        {tier1.map((l) => {
+          // The unit rides at caption size, the way the chips already set
+          // theirs: "0.058" is the reading and "MB/s" is what it is measured
+          // in, and giving both 20px spends a third of a phone cell saying
+          // something that never changes.
+          const [num, unit] = splitUnit(l.value ?? '—');
+          return (
+            <span key={`t1-${l.label}`} className="shrink-0 flex items-baseline gap-1">
+              <span
+                className="font-mono text-[15px] sm:text-[20px] font-bold tabular-nums leading-none"
+                style={{ color: l.color }}
+              >
+                {num}
+              </span>
+              {unit && (
+                <span className="text-[11px] font-mono" style={{ color: l.color }}>{unit}</span>
+              )}
+              {/* Redundant beside the title on a phone: the card is already
+                  called Memory, so the headline does not also need "Used". */}
+              <span className="hidden sm:inline text-[11px] font-mono text-text-muted">{l.label}</span>
             </span>
-            <span className="text-[11px] font-mono text-text-muted">{l.label}</span>
-          </span>
-        ))}
+          );
+        })}
 
         {tier2.map((l) => (
-          <span key={`t2-${l.label}`} className="shrink-0 flex items-baseline gap-1">
+          <span key={`t2-${l.label}`} className="shrink-0 hidden sm:flex items-baseline gap-1">
             <span className="font-mono text-[13px] font-medium tabular-nums text-text-primary">
               {l.value ?? '—'}
             </span>

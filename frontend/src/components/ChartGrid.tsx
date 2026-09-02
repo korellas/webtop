@@ -435,20 +435,20 @@ export default function ChartGrid() {
   return (
     <div
       className="
-        flex flex-col md:grid md:grid-rows-3
-        shrink-0 md:flex-1 md:min-h-0
+        grid grid-rows-3
+        flex-1 min-h-0
         bg-bg-card border border-border rounded-card overflow-hidden
       "
     >
       {/*
-        Below md this is a 1080px column that its parent scrolls, so it takes
-        its natural height — `flex-1 min-h-0` capped it at the viewport and
-        clipped the last cells instead of letting them scroll. From md up it
-        fills the viewport, because there every cell is on screen at once.
+        Three rows of two at every width, phone included.
 
-        The cells are `shrink-0` for the same reason: a flex child will shrink
-        past an explicit height unless told not to, and they were being
-        squeezed from 180px to 118px.
+        The phone used to get a single 1080px column that scrolled. Six cells
+        you have to travel to is a worse trade than six cells you can compare —
+        the reason this grid exists at all is that "what happened at 14:03" is
+        a question read across cards, and putting four of them past the fold
+        answers a different one. The height that costs comes out of the chip
+        strip, which is chrome, and which went from 68px to 31px to pay for it.
 
         Comments belong out here, never inside a `className` template. Tailwind
         reads that string as a word list, not as CSS — a note about "the fixed
@@ -459,9 +459,7 @@ export default function ChartGrid() {
         <div
           key={rIdx}
           className={`
-            flex flex-col md:grid md:grid-cols-2
-            md:flex-initial flex-initial
-            min-h-0
+            grid grid-cols-2 min-h-0
             ${rIdx > 0 ? 'border-t border-border' : ''}
           `}
         >
@@ -474,8 +472,8 @@ export default function ChartGrid() {
               // cell is its position, and a scroll is not state worth owning.
               data-chart={CELL_KEYS[rIdx]?.[cIdx]}
               className={`
-                relative h-[180px] shrink-0 md:h-auto md:shrink md:min-h-0
-                ${cIdx > 0 ? 'border-t md:border-t-0 md:border-l border-border' : ''}
+                relative min-h-0
+                ${cIdx > 0 ? 'border-l border-border' : ''}
               `}
             >
               {cell}

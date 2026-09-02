@@ -3,12 +3,10 @@ import { useNetworkStore } from '../store/network-store';
 import { fetchNetworkInterfaces } from '../lib/api';
 
 /**
- * Continuously fetch network interface info in the background. Runs from the
- * app root so the data is already in the store by the time the user opens
- * the Network drawer — no loading state, instant render.
+ * Fetch network interface info only while the Network drawer is mounted.
  *
- * Cadence: 5 s. The backend 15 s cache means most of these are cheap, and
- * byte rates reflect the 5 s sampler window kept by `net_interfaces.rs`.
+ * Cadence: 5 s. Closing the drawer unmounts the hook and cancels both the
+ * request and timer, so interface detail has no idle polling cost.
  */
 const POLL_INTERVAL_MS = 5_000;
 

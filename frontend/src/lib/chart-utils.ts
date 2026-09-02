@@ -30,7 +30,7 @@ const BANDED: ReadonlyArray<keyof MetricBand> = [
 /**
  * Flatten `snapshot.band` into `<key>_lo` / `<key>_hi` numeric fields.
  *
- * Live WebSocket samples carry no `band` — a 1-second reading is its own
+ * Live WebSocket samples carry no `band` — a point reading is its own
  * extreme — so both bounds fall back to the point value. That makes the band
  * collapse onto the mean line across the live tail instead of vanishing, which
  * would otherwise leave a visible seam where history meets real time.
@@ -70,9 +70,9 @@ export const TIMESCALE_MS: Record<Timescale, number> = {
  * client re-buckets history on a different grid than the server used and the
  * two disagree about where each point sits.
  *
- * Sized against the collector's real ~2 s cadence (measured 2026-08-01: 29 rows
- * in 60 s), not the 1 s the comments used to claim. A bucket narrower than
- * ~2× the sample period holds one row, so nothing is actually averaged — that
+ * Sized against the collector's 2 s active cadence; idle history is sparser.
+ * A bucket narrower than ~2× the active sample period holds one row, so
+ * nothing is actually averaged — that
  * is why the 5 m view looked like raw noise rather than a five-minute overview.
  */
 const MAX_POINTS: Record<Timescale, number> = {
@@ -187,7 +187,7 @@ export function downsample<T extends { timestamp: number }>(
 
     // Real-time edge: show the *running mean* of the still-filling bucket,
     // not the raw latest sample. Passing the raw value through made the
-    // right-hand tail snap to each new 1-s reading every tick while the rest
+    // right-hand tail snap to each new live reading while the rest
     // of the line stayed smoothed — a visible "jumping seam". Averaging the
     // bucket-so-far makes the tail glide and converge instead. We keep the
     // live sample's real timestamp so the edge still sits exactly at "now".

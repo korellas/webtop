@@ -15,7 +15,7 @@ const META_ENERGY_WH_BACKFILL_V1: &str = "energy_wh_backfill_v1";
 /// Idempotency flag for the one-time pass that rewrites the net/disk byte-rate
 /// columns from raw between-tick deltas into true per-second rates. Pre-fix
 /// rows stored the delta as if it accrued in exactly 1 s, inflating every rate
-/// by the tick interval (~1.8x) — e.g. a 500 Mbps link reading as ~900 Mbps.
+/// by the actual tick interval.
 const META_BYTE_RATES_NORMALIZED_V1: &str = "byte_rates_normalized_v1";
 
 /// Idempotency flag for the one-time pass that populates
@@ -139,10 +139,9 @@ impl MetricsDb {
              PRAGMA journal_size_limit = {WAL_SIZE_LIMIT_BYTES};",
         ))?;
 
-        // Raw 1-second snapshots — the single source of truth for history.
-        // Retention: 7 days (≈604 800 rows, ~60 MB). Any timescale can be
-        // derived on-the-fly by GROUP BY time bucket, so we never lose data
-        // across process restarts.
+        // Raw collector snapshots — the single source of truth for history.
+        // Any timescale can be derived on-the-fly by GROUP BY time bucket, so
+        // we never lose data across process restarts.
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS metrics_raw (
                 timestamp INTEGER PRIMARY KEY,
@@ -294,7 +293,7 @@ impl MetricsDb {
     /// One-time heal: rewrite the net/disk byte-rate columns for rows written
     /// before the rate fix. Those rows stored a raw between-tick delta labelled
     /// "per second"; dividing each by the real interval to the previous row
-    /// turns them into honest per-second rates (~1.8x lower). Runs once
+    /// turns them into honest per-second rates. Runs once
     /// (meta-guarded) and — like the energy heal — only ever sees pre-fix rows,
     /// because it runs at `open()` before the collector writes any new
     /// (already-correct) rows. Rows with no predecessor or a non-positive gap
@@ -329,11 +328,10 @@ impl MetricsDb {
     /// session counter. Runs once (guarded by a meta flag) so it can never
     /// clobber the accurate values `insert_raw` writes for live rows.
     ///
-    /// Why this is needed: collector ticks are ~1.8 s apart (a 1 s macmon
-    /// sample window plus refresh/ps/IOKit overhead), so a row count is NOT a
-    /// second count. Weighting each row by its actual interval is what makes
-    /// `SUM(energy_wh)` a faithful Wh total instead of undercounting by the
-    /// tick-interval factor.
+    /// Why this is needed: collector ticks are not a fixed one-second interval,
+    /// so a row count is not a second count. Weighting each row by its actual
+    /// interval makes `SUM(energy_wh)` a faithful Wh total instead of
+    /// undercounting by the tick-interval factor.
     fn ensure_energy_wh_backfilled(&self) {
         if self.meta_get(META_ENERGY_WH_BACKFILL_V1).is_some() {
             return;
@@ -389,18 +387,19 @@ impl MetricsDb {
     // Raw snapshot write / query
     // -----------------------------------------------------------------------
 
-    /// Persist one 1-second snapshot. Called from the collector async task.
+    /// Persist one collector snapshot. Called from the collector async task.
     pub fn insert_raw(&self, s: &SystemSnapshot) -> Result<(), rusqlite::Error> {
-        let conn = crate::sync::guard(self.conn.lock());
+        let mut conn = crate::sync::guard(self.conn.lock());
+        let tx = conn.transaction()?;
 
         // Energy attributable to THIS sample = power × (wall-clock gap to the
         // previous sample), clamped to [0, 5] s like the live counter. We
         // derive the interval from the stored timestamps rather than assuming
-        // 1 Hz, because each collector tick is ~1.8 s (macmon's 1 s window +
-        // refresh/ps/IOKit overhead). Storing the real per-tick Wh here lets
-        // the hourly chart be a plain `SUM(energy_wh)` that can't undercount.
+        // 1 Hz, because the collector uses different active and idle cadences.
+        // Storing the real per-tick Wh here lets the hourly chart be a plain
+        // `SUM(energy_wh)` that can't undercount.
         let prev_ts: Option<i64> =
-            conn.query_row("SELECT MAX(timestamp) FROM metrics_raw", [], |r| {
+            tx.query_row("SELECT MAX(timestamp) FROM metrics_raw", [], |r| {
                 r.get::<_, Option<i64>>(0)
             })?;
         // Same dt, reused for the network byte deltas below: `net_up_bytes_sec`
@@ -425,7 +424,7 @@ impl MetricsDb {
             .map(|dt| (s.net_down_bytes_sec as f64 * dt).round() as i64)
             .unwrap_or(0);
 
-        conn.execute(
+        tx.execute(
             "INSERT OR REPLACE INTO metrics_raw (
                 timestamp, cpu_total, cpu_p_cores, cpu_e_cores, gpu_usage,
                 mem_used, mem_swap_used,
@@ -464,9 +463,9 @@ impl MetricsDb {
         // the collector accumulates `energy_daily` — done here instead
         // because both deltas are already derived from `dt` above, with no
         // need for a second source of truth in the collector tick loop.
+        let day_key = Local::now().format("%Y-%m-%d").to_string();
         if net_up_bytes_delta > 0 || net_down_bytes_delta > 0 {
-            let day_key = Local::now().format("%Y-%m-%d").to_string();
-            conn.execute(
+            tx.execute(
                 "INSERT INTO network_daily(day_key, up_bytes, down_bytes) VALUES(?1, ?2, ?3)
                  ON CONFLICT(day_key) DO UPDATE SET
                      up_bytes = up_bytes + excluded.up_bytes,
@@ -479,7 +478,20 @@ impl MetricsDb {
             )?;
         }
 
-        Ok(())
+        if energy_wh > 0.0 {
+            tx.execute(
+                "INSERT INTO energy_daily(day_key, wh) VALUES(?1, ?2)
+                 ON CONFLICT(day_key) DO UPDATE SET wh = wh + excluded.wh",
+                params![day_key, energy_wh],
+            )?;
+        }
+        tx.execute(
+            "INSERT INTO meta(key, value) VALUES('energy_session_wh', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![s.energy_session_wh.to_string()],
+        )?;
+
+        tx.commit()
     }
 
     /// Query the raw table with time-bucketed averaging.
@@ -1101,8 +1113,7 @@ mod tests {
     }
 
     /// A sample's stored energy must reflect the ACTUAL gap to the previous
-    /// sample, not a 1 Hz assumption. With ticks ~1.8 s apart, assuming 1 s
-    /// per row is what made the hourly chart undercount by ~46%.
+    /// sample, not a 1 Hz assumption.
     #[test]
     fn insert_raw_weights_energy_by_actual_interval() {
         let db = mk_db();
@@ -1400,6 +1411,25 @@ mod tests {
         let (up, down) = *daily.values().next().unwrap();
         assert!((up - 800.0).abs() < 1e-9, "expected 800 up, got {up}");
         assert!((down - 400.0).abs() < 1e-9, "expected 400 down, got {down}");
+    }
+
+    #[test]
+    fn insert_raw_persists_live_and_daily_energy_together() {
+        let db = mk_db();
+        let mut sample = SystemSnapshot {
+            power_total_w: 18.0,
+            energy_session_wh: 42.5,
+            ..Default::default()
+        };
+        sample.timestamp = 1_000_000;
+        db.insert_raw(&sample).unwrap();
+        sample.timestamp = 1_002_000;
+        db.insert_raw(&sample).unwrap();
+
+        assert_eq!(db.meta_get("energy_session_wh").as_deref(), Some("42.5"));
+        let daily_total: f64 = db.list_energy_daily().unwrap().values().sum();
+        let expected = 18.0 * 2.0 / 3600.0;
+        assert!((daily_total - expected).abs() < 1e-9);
     }
 
     #[test]

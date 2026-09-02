@@ -1,4 +1,5 @@
 pub mod battery;
+pub mod disk_io;
 pub mod disks;
 pub mod fan;
 pub mod folder_sizes;

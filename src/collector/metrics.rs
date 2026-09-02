@@ -1,14 +1,12 @@
 use crate::collector::fan::FanReader;
 use crate::collector::snapshot::{ProcessInfo, SystemSnapshot};
-use crate::collector::{battery, gpu_procs, mem_breakdown};
+use crate::collector::{battery, disk_io, gpu_procs, mem_breakdown};
 use crate::storage::db::MetricsDb;
 use chrono::{Datelike, Local};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use sysinfo::{
-    CpuRefreshKind, Disks, MemoryRefreshKind, Networks, ProcessRefreshKind, RefreshKind, System,
-};
+use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind, System};
 
 /// Meta keys used to persist small scalars across process restarts.
 const META_ENERGY_WH: &str = "energy_session_wh";
@@ -22,6 +20,7 @@ const META_ENERGY_RECONCILED_V1: &str = "energy_reconciled_v1";
 
 /// Rolling window (seconds) used to smooth per-process CPU / GPU numbers.
 const PROCESS_WINDOW_SECS: f32 = 5.0;
+const PROCESS_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
 
 #[derive(Clone)]
 struct ProcessSample {
@@ -36,7 +35,7 @@ struct ProcessSample {
 
 /// Collector ticks between disk-list refreshes.
 ///
-/// The collector's real cadence is ~2 s, so 15 ticks is roughly half a minute.
+/// At the active collector cadence, 15 ticks is roughly half a minute.
 /// The disk list only supplies the root volume's used/total — a number that
 /// moves on the scale of downloads, not of ticks. Starting the counter *at*
 /// this value means the first tick after start refreshes, so the very first
@@ -47,6 +46,7 @@ pub struct MetricsCollector {
     sys: System,
     disks: Disks,
     networks: Networks,
+    disk_io_sampler: disk_io::DiskIoSampler,
     prev_net_rx: u64,
     prev_net_tx: u64,
     energy_session_wh: f64,
@@ -71,11 +71,13 @@ pub struct MetricsCollector {
     /// but applied to ps data so it works for every user's processes.
     prev_cpu_time: HashMap<u32, f64>,
     prev_proc_sample_at: Option<Instant>,
+    cached_processes: Vec<ProcessInfo>,
+    last_process_read: Option<Instant>,
     /// DB handle for persisting counters that must survive restarts.
     /// Optional so unit tests can still construct a collector without a DB.
     db: Option<Arc<MetricsDb>>,
     /// Cached battery info — refreshed once every ~10s since it changes slowly
-    /// and shelling out to `pmset`/`ioreg` is relatively expensive.
+    /// and does not need a fresh IOKit registry walk for every snapshot.
     cached_battery: Option<crate::collector::snapshot::BatteryInfo>,
     last_battery_read: Option<Instant>,
 }
@@ -89,13 +91,6 @@ impl MetricsCollector {
     /// Convenience constructor when there's no DB (tests, dry runs).
     pub fn new() -> Self {
         Self::with_db(None)
-    }
-
-    /// Whether the macmon sampler is available. When `true`, `collect()` paces
-    /// itself at ~1 s per call via the sampler's internal sleep, so the
-    /// collector loop does NOT need its own `thread::sleep`.
-    pub fn sampler_is_active(&self) -> bool {
-        self.sampler.is_some()
     }
 
     /// Construct a collector that will persist cross-restart scalars
@@ -186,6 +181,7 @@ impl MetricsCollector {
             sys,
             disks,
             networks,
+            disk_io_sampler: disk_io::DiskIoSampler::new(),
             prev_net_rx: net_rx,
             prev_net_tx: net_tx,
             energy_session_wh,
@@ -203,6 +199,8 @@ impl MetricsCollector {
             prev_gpu_sample_at: None,
             prev_cpu_time: HashMap::new(),
             prev_proc_sample_at: None,
+            cached_processes: Vec::new(),
+            last_process_read: None,
             db,
             cached_battery: None,
             last_battery_read: None,
@@ -212,18 +210,16 @@ impl MetricsCollector {
     pub fn collect(&mut self) -> SystemSnapshot {
         // Narrow, not `refresh_all()`. Everything this function reads out of
         // `sys` is here: global and per-core CPU usage, memory and swap, and
-        // each process's disk-usage delta. `refresh_all()` additionally
+        // host memory. `refresh_all()` additionally
         // re-read the command line, executable path, working directory,
         // environment and owning user of every process on the machine —
         // roughly 900 of them, every two seconds — and none of that is used.
-        // Process *identity* comes from two `ps` passes (see
-        // `collector::processes`) and per-process memory from
-        // `collector::footprint`, neither of which goes through sysinfo.
+        // Process identity comes from the lower-frequency `ps` sample below;
+        // disk throughput comes from IOBlockStorageDriver kernel counters.
         self.sys.refresh_specifics(
             RefreshKind::nothing()
                 .with_cpu(CpuRefreshKind::nothing().with_cpu_usage())
-                .with_memory(MemoryRefreshKind::everything())
-                .with_processes(ProcessRefreshKind::nothing().with_disk_usage()),
+                .with_memory(MemoryRefreshKind::everything()),
         );
 
         // The disk list feeds exactly one number pair — the root volume's
@@ -276,13 +272,9 @@ impl MetricsCollector {
             }
         };
 
-        // Disk I/O — sysinfo's per-process `read_bytes`/`written_bytes` are
-        // ALREADY the delta since the last refresh (the Apple backend subtracts
-        // the previous cumulative internally), so total_disk_io returns THIS
-        // tick's bytes directly. Unlike the cumulative network counters we must
-        // NOT subtract a previous total — doing so was a delta-of-deltas that
-        // collapsed to ~0 under steady I/O. Just rate-normalise below.
-        let (disk_read_delta, disk_write_delta) = Self::total_disk_io(&self.sys);
+        // Disk I/O from cumulative IOBlockStorageDriver counters. This avoids
+        // refreshing every process solely to sum its disk-usage delta.
+        let (disk_read_delta, disk_write_delta) = self.disk_io_sampler.sample_delta();
 
         // Disk capacity
         let (disk_used, disk_total) = self.disk_capacity();
@@ -321,8 +313,8 @@ impl MetricsCollector {
             // and "other" even though sys_power stays flat. The longer
             // window hands us a stable per-subsystem average.
             //
-            // This call blocks for the full window, so it also doubles as
-            // our tick pacing — see the collector thread below.
+            // This call blocks for the full window. The collector loop accounts
+            // for that elapsed time when sleeping to its target cadence.
             if let Ok(m) = sampler.get_metrics(1000) {
                 // macmon returns utilization as a 0-1 ratio — scale to 0-100%.
                 gpu_usage = (m.gpu_usage.1 * 100.0).clamp(0.0, 100.0);
@@ -398,8 +390,8 @@ impl MetricsCollector {
         // Real elapsed time since the previous tick — the single denominator
         // for every "per second" figure. None on the very first tick (no prior
         // reference). Measured at the same point each loop, so it equals the
-        // loop period (~1.8 s), which is also the span the byte/energy deltas
-        // above accrued over.
+        // loop period, which is also the span the byte/energy deltas above
+        // accrued over. The period is longer while there are no live clients.
         let now = Instant::now();
         let tick_dt = self
             .last_tick
@@ -417,186 +409,178 @@ impl MetricsCollector {
 
         // Energy uses the same delta but clamped to [0, 5] s so a sleep /
         // clock-skew gap can't book a giant lump of Wh.
-        let mut tick_delta_wh = 0.0f64;
         if let Some(dt) = tick_dt {
             let dt_secs = dt.clamp(0.0, 5.0);
-            tick_delta_wh = (power_total_w as f64) * dt_secs / 3600.0;
+            let tick_delta_wh = (power_total_w as f64) * dt_secs / 3600.0;
             self.energy_session_wh += tick_delta_wh;
         }
         self.last_tick = Some(now);
+        // The async receiver persists the snapshot, monthly counter, daily
+        // energy, and daily network totals in one SQLite transaction.
 
-        // Persist the running counters every tick. SQLite WAL handles this
-        // trivially (~1 write/sec). On crash or kill, at most the last
-        // second of accumulation is lost. We persist TWO counters:
-        //   • `energy_session_wh` in `meta` — cumulative month-to-date,
-        //     the number shown in the "this session" summary card.
-        //   • A per-local-day row in `energy_daily` — the source of the
-        //     day/week/month bar charts. Kept in sync with the session
-        //     counter by using the same `tick_delta_wh` both increment.
-        if let Some(ref db) = self.db {
-            db.meta_set(META_ENERGY_WH, &self.energy_session_wh.to_string());
-            if tick_delta_wh > 0.0 {
-                let day_key = Local::now().format("%Y-%m-%d").to_string();
-                db.add_daily_energy(&day_key, tick_delta_wh);
-            }
-        }
-
-        // --- Processes: 5-second rolling window average ---------------------
+        // --- Processes: lower-frequency sample, cached between refreshes ----
         //
         // Per-process GPU usage is sampled from `AGXDeviceUserClient`
         // entries in the I/O Kit registry (cumulative accumulatedGPUTime
         // in nanoseconds, per PID). Diffing against the previous sample
         // and dividing by wall-clock elapsed gives instantaneous GPU
         // utilisation — the same method `mactop` uses, no root required.
-        let current_gpu_ns = gpu_procs::sample();
-        let mut per_pid_gpu_pct: HashMap<u32, f32> = HashMap::new();
-        if let Some(prev_at) = self.prev_gpu_sample_at {
-            let elapsed = now.duration_since(prev_at).as_secs_f64().max(0.05);
-            let mut raw_total_pct: f64 = 0.0;
-            for (pid, cur_ns) in &current_gpu_ns {
-                let prev_ns = self.prev_gpu_time_ns.get(pid).copied().unwrap_or(0);
-                if *cur_ns >= prev_ns {
-                    let delta_ns = (*cur_ns - prev_ns) as f64;
-                    // ns of GPU work / wall-ns of elapsed time = GPU fraction
-                    // → multiply by 100 for a percent.
-                    let pct = (delta_ns / (elapsed * 1_000_000_000.0)) * 100.0;
-                    if pct > 0.0 {
-                        per_pid_gpu_pct.insert(*pid, pct as f32);
-                        raw_total_pct += pct;
+        let processes = if should_refresh_processes(self.last_process_read, now) {
+            let current_gpu_ns = gpu_procs::sample();
+            let mut per_pid_gpu_pct: HashMap<u32, f32> = HashMap::new();
+            if let Some(prev_at) = self.prev_gpu_sample_at {
+                let elapsed = now.duration_since(prev_at).as_secs_f64().max(0.05);
+                let mut raw_total_pct: f64 = 0.0;
+                for (pid, cur_ns) in &current_gpu_ns {
+                    let prev_ns = self.prev_gpu_time_ns.get(pid).copied().unwrap_or(0);
+                    if *cur_ns >= prev_ns {
+                        let delta_ns = (*cur_ns - prev_ns) as f64;
+                        // ns of GPU work / wall-ns of elapsed time = GPU fraction
+                        // → multiply by 100 for a percent.
+                        let pct = (delta_ns / (elapsed * 1_000_000_000.0)) * 100.0;
+                        if pct > 0.0 {
+                            per_pid_gpu_pct.insert(*pid, pct as f32);
+                            raw_total_pct += pct;
+                        }
+                    }
+                }
+                // Rescale so the per-process percentages sum to the authoritative
+                // system-wide GPU% reading from macmon. Avoids both under- and
+                // over-reporting when multiple command queues run concurrently.
+                if raw_total_pct > 0.01 && (gpu_usage as f64) > 0.01 {
+                    let scale = (gpu_usage as f64) / raw_total_pct;
+                    for v in per_pid_gpu_pct.values_mut() {
+                        *v = (*v as f64 * scale) as f32;
                     }
                 }
             }
-            // Rescale so the per-process percentages sum to the authoritative
-            // system-wide GPU% reading from macmon. Avoids both under- and
-            // over-reporting when multiple command queues run concurrently.
-            if raw_total_pct > 0.01 && (gpu_usage as f64) > 0.01 {
-                let scale = (gpu_usage as f64) / raw_total_pct;
-                for v in per_pid_gpu_pct.values_mut() {
-                    *v = (*v as f64 * scale) as f32;
-                }
-            }
-        }
-        self.prev_gpu_time_ns = current_gpu_ns;
-        self.prev_gpu_sample_at = Some(now);
+            self.prev_gpu_time_ns = current_gpu_ns;
+            self.prev_gpu_sample_at = Some(now);
 
-        let total_cores = num_cpus as f32;
+            let total_cores = num_cpus as f32;
 
-        // Enumerate ALL users' processes via `ps` (setuid-root). sysinfo
-        // running as an unprivileged LaunchAgent reports 0 CPU/mem for
-        // processes it doesn't own, so they'd silently drop off the list;
-        // ps sees everything. Instantaneous CPU% is derived from the
-        // cumulative CPU-time delta since the previous tick.
-        let ps_rows = crate::collector::processes::sample();
-        let cpu_dt = self
-            .prev_proc_sample_at
-            .map(|at| now.duration_since(at).as_secs_f64().max(0.05));
-        let mut new_cpu_time: HashMap<u32, f64> = HashMap::with_capacity(ps_rows.len());
+            // Enumerate ALL users' processes via `ps` (setuid-root). sysinfo
+            // running as an unprivileged LaunchAgent reports 0 CPU/mem for
+            // processes it doesn't own, so they'd silently drop off the list;
+            // ps sees everything. Instantaneous CPU% is derived from the
+            // cumulative CPU-time delta since the previous tick.
+            let ps_rows = crate::collector::processes::sample();
+            let cpu_dt = self
+                .prev_proc_sample_at
+                .map(|at| now.duration_since(at).as_secs_f64().max(0.05));
+            let mut new_cpu_time: HashMap<u32, f64> = HashMap::with_capacity(ps_rows.len());
 
-        let live_pids: Vec<(u32, f32, u64, String, String, String)> = ps_rows
-            .iter()
-            .map(|r| {
-                new_cpu_time.insert(r.pid, r.cpu_time_secs);
-                // per-core %: a process pinning one full core reads ~100.
-                let cpu_per_core = match (cpu_dt, self.prev_cpu_time.get(&r.pid)) {
-                    (Some(dt), Some(&prev)) if r.cpu_time_secs >= prev => {
-                        ((r.cpu_time_secs - prev) / dt * 100.0) as f32
-                    }
-                    _ => 0.0,
-                };
-                // Normalise to system % (100% = all cores) to match the
-                // convention the rest of the UI already uses.
-                let cpu = (cpu_per_core / total_cores).clamp(0.0, 100.0);
-                (
-                    r.pid,
-                    cpu,
-                    r.mem_bytes,
-                    r.name.clone(),
-                    r.user.clone(),
-                    r.args.clone(),
-                )
-            })
-            .collect();
-        self.prev_cpu_time = new_cpu_time;
-        self.prev_proc_sample_at = Some(now);
-
-        let live_pid_set: std::collections::HashSet<u32> =
-            live_pids.iter().map(|(p, _, _, _, _, _)| *p).collect();
-
-        for (pid, cpu, mem, name, user, cmd) in &live_pids {
-            let gpu_pct = per_pid_gpu_pct.get(pid).copied().unwrap_or(0.0);
-            let sample = ProcessSample {
-                at: now,
-                cpu: *cpu,
-                gpu: gpu_pct,
-                mem: *mem,
-                name: name.clone(),
-                user: user.clone(),
-                cmd: cmd.clone(),
-            };
-            let q = self.process_history.entry(*pid).or_default();
-            q.push_back(sample);
-            while let Some(front) = q.front() {
-                if now.duration_since(front.at).as_secs_f32() > PROCESS_WINDOW_SECS {
-                    q.pop_front();
-                } else {
-                    break;
-                }
-            }
-        }
-        self.process_history
-            .retain(|pid, _| live_pid_set.contains(pid));
-
-        // Build averaged snapshot for every live PID, then emit the union of
-        // (top 60 by CPU) ∪ (top 40 by memory) ∪ (top 40 by GPU) so heavy
-        // GPU or memory users are still visible regardless of CPU share.
-        let all_pids: Vec<ProcessInfo> = self
-            .process_history
-            .iter()
-            .filter_map(|(pid, samples)| {
-                if samples.is_empty() {
-                    return None;
-                }
-                let n = samples.len() as f32;
-                let cpu_avg = samples.iter().map(|s| s.cpu).sum::<f32>() / n;
-                let gpu_avg = samples.iter().map(|s| s.gpu).sum::<f32>() / n;
-                let last = samples.back().unwrap();
-                Some(ProcessInfo {
-                    pid: *pid,
-                    name: last.name.clone(),
-                    user: last.user.clone(),
-                    cpu_percent: cpu_avg,
-                    gpu_percent: gpu_avg,
-                    mem_bytes: last.mem,
-                    cmd: last.cmd.clone(),
+            let live_pids: Vec<(u32, f32, u64, String, String, String)> = ps_rows
+                .iter()
+                .map(|r| {
+                    new_cpu_time.insert(r.pid, r.cpu_time_secs);
+                    // per-core %: a process pinning one full core reads ~100.
+                    let cpu_per_core = match (cpu_dt, self.prev_cpu_time.get(&r.pid)) {
+                        (Some(dt), Some(&prev)) if r.cpu_time_secs >= prev => {
+                            ((r.cpu_time_secs - prev) / dt * 100.0) as f32
+                        }
+                        _ => 0.0,
+                    };
+                    // Normalise to system % (100% = all cores) to match the
+                    // convention the rest of the UI already uses.
+                    let cpu = (cpu_per_core / total_cores).clamp(0.0, 100.0);
+                    (
+                        r.pid,
+                        cpu,
+                        r.mem_bytes,
+                        r.name.clone(),
+                        r.user.clone(),
+                        r.args.clone(),
+                    )
                 })
-            })
-            .collect();
+                .collect();
+            self.prev_cpu_time = new_cpu_time;
+            self.prev_proc_sample_at = Some(now);
 
-        let mut by_cpu = all_pids.clone();
-        by_cpu.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
-        by_cpu.truncate(60);
+            let live_pid_set: std::collections::HashSet<u32> =
+                live_pids.iter().map(|(p, _, _, _, _, _)| *p).collect();
 
-        let mut by_mem = all_pids.clone();
-        by_mem.sort_by(|a, b| b.mem_bytes.cmp(&a.mem_bytes));
-        by_mem.truncate(40);
-
-        let mut by_gpu = all_pids;
-        by_gpu.sort_by(|a, b| b.gpu_percent.partial_cmp(&a.gpu_percent).unwrap());
-        by_gpu.truncate(40);
-
-        let mut seen = std::collections::HashSet::new();
-        let mut processes: Vec<ProcessInfo> = Vec::with_capacity(120);
-        for p in by_cpu
-            .into_iter()
-            .chain(by_gpu.into_iter())
-            .chain(by_mem.into_iter())
-        {
-            if seen.insert(p.pid) {
-                processes.push(p);
+            for (pid, cpu, mem, name, user, cmd) in &live_pids {
+                let gpu_pct = per_pid_gpu_pct.get(pid).copied().unwrap_or(0.0);
+                let sample = ProcessSample {
+                    at: now,
+                    cpu: *cpu,
+                    gpu: gpu_pct,
+                    mem: *mem,
+                    name: name.clone(),
+                    user: user.clone(),
+                    cmd: cmd.clone(),
+                };
+                let q = self.process_history.entry(*pid).or_default();
+                q.push_back(sample);
+                while let Some(front) = q.front() {
+                    if now.duration_since(front.at).as_secs_f32() > PROCESS_WINDOW_SECS {
+                        q.pop_front();
+                    } else {
+                        break;
+                    }
+                }
             }
-        }
-        // Final default sort: CPU desc. Frontend can re-sort per column.
-        processes.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
+            self.process_history
+                .retain(|pid, _| live_pid_set.contains(pid));
+
+            // Build averaged snapshot for every live PID, then emit the union of
+            // (top 60 by CPU) ∪ (top 40 by memory) ∪ (top 40 by GPU) so heavy
+            // GPU or memory users are still visible regardless of CPU share.
+            let all_pids: Vec<ProcessInfo> = self
+                .process_history
+                .iter()
+                .filter_map(|(pid, samples)| {
+                    if samples.is_empty() {
+                        return None;
+                    }
+                    let n = samples.len() as f32;
+                    let cpu_avg = samples.iter().map(|s| s.cpu).sum::<f32>() / n;
+                    let gpu_avg = samples.iter().map(|s| s.gpu).sum::<f32>() / n;
+                    let last = samples.back().unwrap();
+                    Some(ProcessInfo {
+                        pid: *pid,
+                        name: last.name.clone(),
+                        user: last.user.clone(),
+                        cpu_percent: cpu_avg,
+                        gpu_percent: gpu_avg,
+                        mem_bytes: last.mem,
+                        cmd: last.cmd.clone(),
+                    })
+                })
+                .collect();
+
+            let mut by_cpu = all_pids.clone();
+            by_cpu.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
+            by_cpu.truncate(60);
+
+            let mut by_mem = all_pids.clone();
+            by_mem.sort_by(|a, b| b.mem_bytes.cmp(&a.mem_bytes));
+            by_mem.truncate(40);
+
+            let mut by_gpu = all_pids;
+            by_gpu.sort_by(|a, b| b.gpu_percent.partial_cmp(&a.gpu_percent).unwrap());
+            by_gpu.truncate(40);
+
+            let mut seen = std::collections::HashSet::new();
+            let mut processes: Vec<ProcessInfo> = Vec::with_capacity(120);
+            for p in by_cpu
+                .into_iter()
+                .chain(by_gpu.into_iter())
+                .chain(by_mem.into_iter())
+            {
+                if seen.insert(p.pid) {
+                    processes.push(p);
+                }
+            }
+            // Final default sort: CPU desc. Frontend can re-sort per column.
+            processes.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
+            self.cached_processes = processes.clone();
+            self.last_process_read = Some(now);
+            processes
+        } else {
+            self.cached_processes.clone()
+        };
 
         SystemSnapshot {
             timestamp,
@@ -644,22 +628,6 @@ impl MetricsCollector {
             tx += data.total_transmitted();
         }
         (rx, tx)
-    }
-
-    /// Sum of per-process disk bytes **since the last `refresh`** — i.e. this
-    /// tick's read/write totals, NOT cumulative. `DiskUsage::read_bytes` is
-    /// already `current - previous` inside sysinfo (see `total_read_bytes` for
-    /// the lifetime figure), so callers must treat the return as a per-tick
-    /// delta and only divide by elapsed time, never subtract a prior value.
-    fn total_disk_io(sys: &System) -> (u64, u64) {
-        let mut read = 0u64;
-        let mut write = 0u64;
-        for (_pid, proc_) in sys.processes() {
-            let du = proc_.disk_usage();
-            read += du.read_bytes;
-            write += du.written_bytes;
-        }
-        (read, write)
     }
 
     fn disk_capacity(&self) -> (u64, u64) {
@@ -731,13 +699,18 @@ fn is_countable_iface(name: &str) -> bool {
 /// Convert a between-tick cumulative-counter delta into a per-second rate
 /// using the ACTUAL elapsed time. Returns 0 when the interval is unknown
 /// (first tick) or non-positive — never divides by zero, and never assumes a
-/// 1 s cadence. Real ticks are ~1.8 s, so assuming 1 Hz would inflate every
-/// byte rate ~1.8x (a 500 Mbps link reading as ~900 Mbps).
+/// 1 s cadence.
 fn per_sec_rate(delta: u64, dt_secs: Option<f64>) -> u64 {
     match dt_secs {
         Some(s) if s > 0.0 => (delta as f64 / s).round() as u64,
         _ => 0,
     }
+}
+
+fn should_refresh_processes(last_read: Option<Instant>, now: Instant) -> bool {
+    last_read
+        .map(|at| now.duration_since(at) >= PROCESS_REFRESH_INTERVAL)
+        .unwrap_or(true)
 }
 
 /// Sanitize a die-temperature reading from macmon.
@@ -756,7 +729,8 @@ fn sanitize_temp(c: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_countable_iface, per_sec_rate};
+    use super::{is_countable_iface, per_sec_rate, should_refresh_processes};
+    use std::time::{Duration, Instant};
 
     #[test]
     fn rate_divides_delta_by_real_interval() {
@@ -808,5 +782,19 @@ mod tests {
         ] {
             assert!(!is_countable_iface(n), "{n} should be skipped");
         }
+    }
+
+    #[test]
+    fn process_refresh_is_immediate_then_rate_limited() {
+        let now = Instant::now();
+        assert!(should_refresh_processes(None, now));
+        assert!(!should_refresh_processes(
+            Some(now - Duration::from_secs(9)),
+            now
+        ));
+        assert!(should_refresh_processes(
+            Some(now - Duration::from_secs(10)),
+            now
+        ));
     }
 }

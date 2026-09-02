@@ -22,3 +22,7 @@ macmon = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 if-addrs = "0.13"
 libc = "0.2"
+objc2-core-wlan = { version = "0.3.2", default-features = false, features = ["std", "CWChannel", "CWInterface", "CWWiFiClient", "CoreWLANTypes"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString"] }
+objc2-io-kit = { version = "0.3.2", default-features = false, features = ["std", "libc", "ps"] }
+objc2-system-configuration = { version = "0.3.2", default-features = false, features = ["std", "SCNetworkConfiguration"] }

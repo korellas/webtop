@@ -1,156 +1,164 @@
-//! Battery info via `pmset -g batt` + `ioreg -rn AppleSmartBattery`.
+//! Battery information from macOS power-source and I/O Registry APIs.
 //!
-//! Shelling out keeps us free of heavy IOKit FFI for a value that only
-//! needs to refresh every few seconds.
-//!
-//! Return `None` when no battery is present (desktop Macs) or when parsing
-//! fails completely — the frontend hides the battery block in that case.
+//! The common state comes from IOPowerSources. Cycle count, design capacity,
+//! and raw charge values live on AppleSmartBattery, so those are read directly
+//! from IOKit without launching `pmset` or `ioreg`.
 
 use crate::collector::snapshot::BatteryInfo;
-use std::process::Command;
+use objc2_core_foundation::{
+    CFArray, CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType,
+};
+use objc2_io_kit::{
+    kIOMainPortDefault, IOObjectRelease, IOPSCopyPowerSourcesInfo, IOPSCopyPowerSourcesList,
+    IOPSGetPowerSourceDescription, IORegistryEntryCreateCFProperty, IOServiceGetMatchingService,
+    IOServiceMatching,
+};
 
-/// Read the current battery state. Best-effort: any missing field is left as
-/// `None` rather than failing the whole struct.
 pub fn collect() -> Option<BatteryInfo> {
-    let pmset = run("pmset", &["-g", "batt"])?;
-    // If the pmset output doesn't mention InternalBattery, this Mac has no battery.
-    if !pmset.contains("InternalBattery") {
-        return None;
+    let info = IOPSCopyPowerSourcesInfo()?;
+    let sources = unsafe { IOPSCopyPowerSourcesList(Some(&info))? };
+    // SAFETY: IOPSCopyPowerSourcesList documents every array member as a
+    // CFTypeRef power-source handle.
+    let sources: CFRetained<CFArray<CFType>> = unsafe { CFRetained::cast_unchecked(sources) };
+
+    for source in &*sources {
+        let description =
+            unsafe { IOPSGetPowerSourceDescription(Some(&info), Some(source.as_ref()))? };
+        // SAFETY: IOPSGetPowerSourceDescription documents string keys and
+        // arbitrary CoreFoundation values.
+        let description: CFRetained<CFDictionary<CFString, CFType>> =
+            unsafe { CFRetained::cast_unchecked(description) };
+
+        if cf_string(&description, "Type").as_deref() != Some("InternalBattery") {
+            continue;
+        }
+
+        let current = cf_i64(&description, "Current Capacity")?;
+        let maximum = cf_i64(&description, "Max Capacity")?;
+        if maximum <= 0 {
+            return None;
+        }
+
+        let is_charging = cf_bool(&description, "Is Charging").unwrap_or(false);
+        let is_plugged_in =
+            cf_string(&description, "Power Source State").as_deref() == Some("AC Power");
+        let remaining_minutes = if is_charging {
+            cf_i64(&description, "Time to Full Charge")
+        } else {
+            cf_i64(&description, "Time to Empty")
+        };
+        let time_remaining_sec = remaining_minutes
+            .filter(|minutes| *minutes >= 0)
+            .and_then(|minutes| u32::try_from(minutes).ok())
+            .map(|minutes| minutes.saturating_mul(60));
+
+        let registry = battery_registry_values();
+        let voltage_mv = cf_i64(&description, "Voltage").or(registry.voltage_mv);
+        let amperage_ma = cf_i64(&description, "Current").or(registry.amperage_ma);
+        let health_percent = match (registry.design_capacity, registry.max_capacity) {
+            (Some(design), Some(maximum)) if design > 0 => {
+                Some((maximum as f32 / design as f32 * 100.0).clamp(0.0, 120.0))
+            }
+            _ => None,
+        };
+
+        return Some(BatteryInfo {
+            percent: (current as f32 / maximum as f32 * 100.0).clamp(0.0, 100.0),
+            is_charging,
+            is_plugged_in,
+            time_remaining_sec,
+            cycle_count: registry.cycle_count.and_then(|v| u32::try_from(v).ok()),
+            health_percent,
+            charge_rate_w: charge_rate_w(voltage_mv, amperage_ma),
+        });
     }
 
-    let percent = parse_pmset_percent(&pmset)?;
-    let (is_charging, is_plugged_in) = parse_pmset_state(&pmset);
-    let time_remaining_sec = parse_pmset_time(&pmset);
+    None
+}
 
-    // ioreg carries the richer battery registry entry; missing fields = None.
-    let ioreg = run("ioreg", &["-rn", "AppleSmartBattery"]).unwrap_or_default();
-    let cycle_count = parse_ioreg_int(&ioreg, "CycleCount").map(|v| v as u32);
-    let design = parse_ioreg_int(&ioreg, "DesignCapacity");
-    let max_cap = parse_ioreg_int(&ioreg, "AppleRawMaxCapacity")
-        .or_else(|| parse_ioreg_int(&ioreg, "MaxCapacity"));
-    let health_percent = match (design, max_cap) {
-        (Some(d), Some(m)) if d > 0 => Some((m as f32 / d as f32 * 100.0).clamp(0.0, 120.0)),
-        _ => None,
+fn cf_value(dictionary: &CFDictionary<CFString, CFType>, key: &str) -> Option<CFRetained<CFType>> {
+    dictionary.get(&CFString::from_str(key))
+}
+
+fn cf_i64(dictionary: &CFDictionary<CFString, CFType>, key: &str) -> Option<i64> {
+    cf_value(dictionary, key)?
+        .downcast_ref::<CFNumber>()?
+        .as_i64()
+}
+
+fn cf_bool(dictionary: &CFDictionary<CFString, CFType>, key: &str) -> Option<bool> {
+    Some(
+        cf_value(dictionary, key)?
+            .downcast_ref::<CFBoolean>()?
+            .value(),
+    )
+}
+
+fn cf_string(dictionary: &CFDictionary<CFString, CFType>, key: &str) -> Option<String> {
+    Some(
+        cf_value(dictionary, key)?
+            .downcast_ref::<CFString>()?
+            .to_string(),
+    )
+}
+
+#[derive(Default)]
+struct BatteryRegistryValues {
+    cycle_count: Option<i64>,
+    design_capacity: Option<i64>,
+    max_capacity: Option<i64>,
+    voltage_mv: Option<i64>,
+    amperage_ma: Option<i64>,
+}
+
+fn battery_registry_values() -> BatteryRegistryValues {
+    let class_name = b"AppleSmartBattery\0";
+    let matching = unsafe { IOServiceMatching(class_name.as_ptr().cast()) };
+    let Some(matching) = matching else {
+        return BatteryRegistryValues::default();
     };
+    // SAFETY: CFMutableDictionary is a CFDictionary subclass and the matching
+    // dictionary is consumed by IOServiceGetMatchingService.
+    let matching = unsafe { CFRetained::cast_unchecked(matching) };
+    let service = unsafe { IOServiceGetMatchingService(kIOMainPortDefault, Some(matching)) };
+    if service == 0 {
+        return BatteryRegistryValues::default();
+    }
 
-    // Instantaneous power: amperage (mA, signed) × voltage (mV).
-    let voltage_mv = parse_ioreg_int(&ioreg, "Voltage");
-    let amperage_ma = parse_ioreg_signed(&ioreg, "InstantAmperage")
-        .or_else(|| parse_ioreg_signed(&ioreg, "Amperage"));
-    let charge_rate_w = match (voltage_mv, amperage_ma) {
-        (Some(v), Some(a)) => Some((v as f32 * a as f32) / 1_000_000.0),
-        _ => None,
+    let values = BatteryRegistryValues {
+        cycle_count: registry_i64(service, "CycleCount"),
+        design_capacity: registry_i64(service, "DesignCapacity"),
+        max_capacity: registry_i64(service, "AppleRawMaxCapacity")
+            .or_else(|| registry_i64(service, "MaxCapacity")),
+        voltage_mv: registry_i64(service, "Voltage"),
+        amperage_ma: registry_i64(service, "InstantAmperage")
+            .or_else(|| registry_i64(service, "Amperage")),
     };
-
-    Some(BatteryInfo {
-        percent,
-        is_charging,
-        is_plugged_in,
-        time_remaining_sec,
-        cycle_count,
-        health_percent,
-        charge_rate_w,
-    })
+    IOObjectRelease(service);
+    values
 }
 
-fn run(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new(cmd).args(args).output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).into_owned())
+fn registry_i64(service: u32, key: &str) -> Option<i64> {
+    let key = CFString::from_str(key);
+    let value = unsafe { IORegistryEntryCreateCFProperty(service, Some(&key), None, 0) }?;
+    value.downcast_ref::<CFNumber>()?.as_i64()
 }
 
-/// `100%;` → 100.0
-fn parse_pmset_percent(text: &str) -> Option<f32> {
-    for line in text.lines() {
-        if let Some(pct_end) = line.find('%') {
-            // Walk backwards from the '%' gathering digits.
-            let prefix = &line[..pct_end];
-            let digits: String = prefix
-                .chars()
-                .rev()
-                .take_while(|c| c.is_ascii_digit())
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect();
-            if let Ok(v) = digits.parse::<f32>() {
-                return Some(v.clamp(0.0, 100.0));
-            }
-        }
+fn charge_rate_w(voltage_mv: Option<i64>, amperage_ma: Option<i64>) -> Option<f32> {
+    match (voltage_mv, amperage_ma) {
+        (Some(voltage), Some(amperage)) => Some((voltage as f32 * amperage as f32) / 1_000_000.0),
+        _ => None,
     }
-    None
 }
 
-/// Returns (is_charging, is_plugged_in).
-fn parse_pmset_state(text: &str) -> (bool, bool) {
-    let lower = text.to_ascii_lowercase();
-    let is_plugged = lower.contains("ac power") || lower.contains("charging");
-    let is_charging = lower.contains("charging") && !lower.contains("not charging");
-    (is_charging, is_plugged)
-}
+#[cfg(test)]
+mod tests {
+    use super::charge_rate_w;
 
-/// Parse "X:YY remaining" → seconds. Returns None if "(no estimate)" present.
-fn parse_pmset_time(text: &str) -> Option<u32> {
-    if text.contains("(no estimate)") {
-        return None;
+    #[test]
+    fn native_voltage_and_signed_current_preserve_power_direction() {
+        assert_eq!(charge_rate_w(Some(12_000), Some(1_500)), Some(18.0));
+        assert_eq!(charge_rate_w(Some(12_000), Some(-1_500)), Some(-18.0));
+        assert_eq!(charge_rate_w(None, Some(1_500)), None);
     }
-    for line in text.lines() {
-        if let Some(idx) = line.find("remaining") {
-            let prefix = &line[..idx];
-            // Scan back for a "H:MM" token.
-            if let Some(tok) = prefix.split_whitespace().rev().find(|t| t.contains(':')) {
-                let mut parts = tok.split(':');
-                let h: u32 = parts.next()?.parse().ok()?;
-                let m: u32 = parts.next()?.parse().ok()?;
-                return Some(h * 3600 + m * 60);
-            }
-        }
-    }
-    None
-}
-
-/// Find `"Key" = 123` in ioreg output. Returns unsigned integer value.
-fn parse_ioreg_int(text: &str, key: &str) -> Option<u64> {
-    let needle = format!("\"{key}\"");
-    for line in text.lines() {
-        if let Some(pos) = line.find(&needle) {
-            let tail = &line[pos + needle.len()..];
-            if let Some(eq) = tail.find('=') {
-                let val = tail[eq + 1..].trim();
-                let digits: String = val
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit() || *c == '-')
-                    .collect();
-                if let Ok(v) = digits.parse::<i64>() {
-                    if v >= 0 {
-                        return Some(v as u64);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Signed variant for Amperage (negative = discharging).
-fn parse_ioreg_signed(text: &str, key: &str) -> Option<i64> {
-    let needle = format!("\"{key}\"");
-    for line in text.lines() {
-        if let Some(pos) = line.find(&needle) {
-            let tail = &line[pos + needle.len()..];
-            if let Some(eq) = tail.find('=') {
-                let val = tail[eq + 1..].trim();
-                let digits: String = val
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit() || *c == '-')
-                    .collect();
-                if let Ok(v) = digits.parse::<i64>() {
-                    return Some(v);
-                }
-            }
-        }
-    }
-    None
 }

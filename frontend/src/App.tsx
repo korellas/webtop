@@ -7,7 +7,6 @@ import ServicesView from './components/services/ServicesView';
 import DrawerContent from './components/drawer/DrawerContent';
 import { useWebSocket } from './hooks/use-websocket';
 import { useInitialData } from './hooks/use-history';
-import { useNetworkPoll } from './hooks/use-network-poll';
 import { useServicesPoll } from './hooks/use-services';
 import { useTheme } from './store/theme-store';
 import { useViewStore } from './store/view-store';
@@ -16,7 +15,6 @@ import { useHoverStore, useHoverFade } from './store/hover-store';
 export default function App() {
   useWebSocket();
   useInitialData();
-  useNetworkPoll(); // pre-populate network interfaces so the drawer opens instantly
   useTheme(); // keep data-theme attribute in sync
   useHoverFade(); // keep data-hover-fading attribute in sync
 

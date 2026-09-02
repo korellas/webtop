@@ -215,6 +215,30 @@ const SEVERITY_BORDER: Record<Severity, string> = {
   crit: 'border-danger',
 };
 
+/**
+ * Every chip's class string, composed in one place.
+ *
+ * `CHIP_BASE` carries `border` without a colour so that severity can supply
+ * one — which means a chip assembled without it gets `currentColor`, and in
+ * light mode that is #09090b. The Net chip shipped exactly that: one hard
+ * black outline in a row of hairlines, because a single branch of the four
+ * was missed. Tailwind cannot rescue this with an override either, since two
+ * utilities for the same property resolve by CSS source order and not by the
+ * order they appear in the attribute.
+ *
+ * So there is no longer a way to build a chip and forget: the border is not
+ * a class anyone appends, it is a parameter of this function.
+ */
+function chipClass(sev: Severity, opts?: { interactive?: boolean; extra?: string }) {
+  return [
+    CHIP_BASE,
+    SEVERITY_BORDER[sev],
+    opts?.interactive ? CHIP_INTERACTIVE : '',
+    'text-left',
+    opts?.extra ?? '',
+  ].filter(Boolean).join(' ');
+}
+
 const CHIP_INTERACTIVE =
   'hover:bg-bg-hover hover:border-border-strong active:scale-[0.98] transition-[background-color,border-color,transform] duration-150 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong';
 
@@ -257,8 +281,6 @@ function MiniChip({
     </>
   );
 
-  const border = SEVERITY_BORDER[sev];
-
   if (!card) {
     // No drawer worth opening, but on a phone it can still be the index entry
     // for its chart — which is the whole of what it can usefully do there.
@@ -267,7 +289,7 @@ function MiniChip({
         type="button"
         aria-label={`Scroll to ${label} chart`}
         onClick={() => scrollToChart(label)}
-        className={`${CHIP_BASE} ${border} text-left md:cursor-default`}
+        className={chipClass(sev, { extra: 'md:cursor-default' })}
       >
         {content}
       </button>
@@ -281,9 +303,10 @@ function MiniChip({
       aria-label={`Open ${label} detail`}
       aria-expanded={isActive}
       onClick={(e) => { scrollToChart(label); toggle(card, captureAnchor(e)); }}
-      className={`${CHIP_BASE} ${border} ${CHIP_INTERACTIVE} text-left ${
-        isActive ? 'bg-bg-hover border-border-strong' : ''
-      }`}
+      className={chipClass(sev, {
+        interactive: true,
+        extra: isActive ? 'bg-bg-hover border-border-strong' : '',
+      })}
     >
       {content}
     </button>
@@ -335,9 +358,9 @@ function MiniDualChip({
     </>
   );
 
-  // Neither of this variant's metrics is a proportion of a ceiling, so
-  // there is nothing here for a threshold to be crossed.
-  const border = SEVERITY_BORDER.ok;
+  // Neither of this variant's metrics is a proportion of a ceiling, so there
+  // is nothing here for a threshold to be crossed.
+  const sev: Severity = 'ok';
 
   if (!card) {
     // No drawer worth opening, but on a phone it can still be the index entry
@@ -347,7 +370,7 @@ function MiniDualChip({
         type="button"
         aria-label={`Scroll to ${label} chart`}
         onClick={() => scrollToChart(label)}
-        className={`${CHIP_BASE} ${border} text-left md:cursor-default`}
+        className={chipClass(sev, { extra: 'md:cursor-default' })}
       >
         {content}
       </button>
@@ -361,9 +384,10 @@ function MiniDualChip({
       aria-label={`Open ${label} detail`}
       aria-expanded={isActive}
       onClick={(e) => { scrollToChart(label); toggle(card, captureAnchor(e)); }}
-      className={`${CHIP_BASE} ${CHIP_INTERACTIVE} text-left ${
-        isActive ? 'bg-bg-hover border-border-strong' : ''
-      }`}
+      className={chipClass(sev, {
+        interactive: true,
+        extra: isActive ? 'bg-bg-hover border-border-strong' : '',
+      })}
     >
       {content}
     </button>

@@ -75,7 +75,10 @@ export default function ChartGrid() {
   const networkTotals = useMetricsStore((s) => s.networkTotals);
   const info = useSystemStore((s) => s.info);
 
-  const memTotalGB = info ? info.mem_total / GB : 76;
+  // Null until the machine says how much RAM it has. There used to be a `76`
+  // here, which drew a 76 GB ceiling on a 256 GB machine for the first frames
+  // after load — a made-up axis is worse than no axis, because it is legible.
+  const memTotalGB = info && info.mem_total > 0 ? info.mem_total / GB : null;
   const latest = snapshots[snapshots.length - 1];
   const memPct = info && latest && info.mem_total > 0
     ? (latest.mem_used / info.mem_total) * 100
@@ -262,10 +265,12 @@ export default function ChartGrid() {
           { dataKey: 'mem_used_gb', color: COLORS.memory, tier: 'primary' },
           { dataKey: 'mem_swap_gb', color: COLORS.memoryLight, tier: 'secondary' },
         ]}
-        yDomain={[0, Math.ceil(memTotalGB)]}
+        // The ceiling is the machine's own capacity, so until that is known the
+        // axis autoscales rather than claiming a total it cannot support.
+        yDomain={memTotalGB ? [0, Math.ceil(memTotalGB)] : [0, 'auto'] as [number, number | 'auto']}
         // 0 / half / total — the axis is the machine's capacity, so its
         // midpoint is a fact about the machine and worth a gridline.
-        yTicks={[0, Math.round(memTotalGB / 2), Math.ceil(memTotalGB)]}
+        yTicks={memTotalGB ? [0, Math.round(memTotalGB / 2), Math.ceil(memTotalGB)] : undefined}
         yFormatter={(v) => v < 10 ? `${v.toFixed(1)}G` : `${Math.round(v)}G`}
         legend={[
           {

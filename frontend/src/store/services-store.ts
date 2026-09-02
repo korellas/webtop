@@ -20,6 +20,22 @@ interface ServicesState {
  * collapsing them into one string means the panel has to guess which one it is
  * showing.
  */
+/**
+ * Whether this build has any services to show at all.
+ *
+ * `null` while unknown — the nav keeps the tab until the answer is in, because
+ * flashing a tab away a moment after load is worse than showing it a moment
+ * too long. `false` means the manifest is missing or declares nothing, which
+ * is the ordinary state of a webtop running without the stack it was written
+ * beside: not an error, just a screen with nothing to put on it.
+ */
+export function servicesAvailable(s: {
+  loaded: boolean; manifestError: string | null; services: unknown[];
+}): boolean | null {
+  if (!s.loaded) return null;
+  return s.manifestError === null && s.services.length > 0;
+}
+
 export const useServicesStore = create<ServicesState>((set) => ({
   services: [],
   manifestPath: '',

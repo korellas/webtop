@@ -1,7 +1,6 @@
 import { useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, ReferenceLine,
-  useYAxisScale, useXAxisScale, usePlotArea,
 } from 'recharts';
 import { useTimescaleStore } from '../store/timescale-store';
 import { useHoverStore } from '../store/hover-store';
@@ -172,61 +171,15 @@ function findExtreme(
 }
 
 
-/** Radius of the terminal dot marking where each line ends. */
-const TAIL_DOT_R = 2.5;
-
-interface TailPoint {
-  dataKey: string;
-  color: string;
-  secondary?: boolean;
-  /** Last plotted value, in chart units. */
-  value: number;
-}
-
-/**
- * A dot at the end of every line — the point the legend and summary card
- * report, made explicit so the parity is obvious.
+/*
+ * `TailDots` used to live here: one filled dot pinned to the end of every
+ * line, on the reasoning that a curve should say where it stops.
  *
- * Drawn as an overlay rather than through Recharts' `dot` prop, and that is a
- * performance fix, not a style one. `dot` invokes its renderer once per *data
- * point*: to show twelve visible dots the grid was creating 5 424 invisible
- * `r=0` circles — 88 % of its entire SVG — and React reconciled all of them on
- * every render. Twelve elements do the same job.
+ * It does say. The line ends. On a card carrying four series the dots were
+ * four marks stacked in the right margin, and with the end-value pills gone
+ * they were the last thing still competing with the plot for the same few
+ * pixels. The current value is the 20px headline at the top of the card.
  */
-function TailDots({ points, timestamp }: { points: TailPoint[]; timestamp: number | undefined }) {
-  const yLeft = useYAxisScale('left');
-  const yRight = useYAxisScale('right');
-  const xScale = useXAxisScale();
-  const plot = usePlotArea();
-  if (!plot || typeof timestamp !== 'number') return null;
-
-  const x = xScale?.(timestamp);
-  if (typeof x !== 'number' || !Number.isFinite(x)) return null;
-
-  return (
-    <g data-overlay="tail-dots">
-      {points.map((p) => {
-        const y = (p.secondary ? yRight : yLeft)?.(p.value);
-        if (typeof y !== 'number' || !Number.isFinite(y)) return null;
-        return (
-          <circle
-            key={p.dataKey}
-            cx={x}
-            cy={y}
-            r={TAIL_DOT_R}
-            fill={p.color}
-            stroke="var(--color-bg-card)"
-            strokeWidth={1}
-          />
-        );
-      })}
-    </g>
-  );
-}
-
-/* Hoisted so Recharts sees the same object every render — a fresh object
- * literal in JSX is a changed prop, which is what its performance guide means
- * by `jsx-no-new-object-as-prop`. */
 const CURSOR_STYLE = {
   stroke: 'var(--color-chart-axis)',
   strokeWidth: 1,
@@ -433,28 +386,10 @@ export default function MetricChart({
     })),
   ];
 
-  // Primary metrics get a live value tag riding the right end of their line.
-  // We position by the last *smoothed* value (so the tag sits on the curve)
-  // but display the pre-formatted legend string (so it matches the summary).
-  //
-  // Positioned from the *mean* series, not the plotted one: with M4 the final
-  // vertex is whichever extreme the last bucket ended on, so the tag would
-  // jump to a spike and stop marking where the value actually is.
-  const lastPoint = smoothedMeans[smoothedMeans.length - 1] as Record<string, number> | undefined;
-  /** Where every line ends — one dot each, drawn by `TailDots`. */
-  const tailPoints: TailPoint[] = lines
-    .map((l) => ({
-      dataKey: l.dataKey,
-      color: l.color,
-      secondary: l.secondary,
-      value: lastPoint ? Number(lastPoint[l.dataKey]) : NaN,
-    }))
-    .filter((p) => Number.isFinite(p.value));
-
 
   /**
-   * Recharts inserts unrecognized children (our `TailDots` / `ChartHoverEcho`)
-   * into the SVG at their raw JSX position, but its own
+   * Recharts inserts unrecognized children (our `ChartHoverEcho`) into the
+   * SVG at their raw JSX position, but its own
    * Area/Line paths are collected into a `recharts-zIndex-layer_100` group
    * that Recharts always places after them — so no JSX ordering can make
    * our overlays paint over the curves; the DOM position is fixed by
@@ -734,8 +669,9 @@ export default function MetricChart({
                   // cheap if nothing is painted behind them.
                   fill={tier === 'primary' && !m4 ? `url(#grad-${line.dataKey})` : 'transparent'}
                   fillOpacity={1}
-                  // No per-point dot renderer — the terminal dot is drawn once
-                  // by `TailDots`. See its doc for what this prop was costing.
+                  // No per-point dot renderer. Recharts would otherwise mount a
+                  // element per sample per series, which is thousands of nodes
+                  // to draw a line that is already a path.
                   dot={false}
                   activeDot={ACTIVE_DOT}
                   isAnimationActive={false}
@@ -760,7 +696,6 @@ export default function MetricChart({
               tier 3 in the legend above, where they read as a different kind
               of fact from the current value instead of competing with it.
             */}
-            <TailDots points={tailPoints} timestamp={lastPoint?.timestamp} />
             {/* Always mounted, and it subscribes to the hover itself — that is
                 what keeps a pointer move from re-rendering this whole chart. */}
             <ChartHoverEcho

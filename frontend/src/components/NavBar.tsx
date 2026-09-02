@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { useViewStore, type View } from '../store/view-store';
+import { useServicesStore, servicesAvailable } from '../store/services-store';
 import NavIcon from './NavIcon';
 import { NAV_LABELS, nextView } from './nav';
 
-const ITEMS: View[] = ['system', 'services', 'processes'];
+const ALL_ITEMS: View[] = ['system', 'services', 'processes'];
 
 /**
  * The app's navigation, living in the bottom bar at every width.
@@ -25,9 +27,32 @@ export default function NavBar() {
   const view = useViewStore((s) => s.view);
   const setView = useViewStore((s) => s.setView);
 
+  /**
+   * Services is conditional on there being any.
+   *
+   * webtop reads a manifest that belongs to a stack it was written beside; a
+   * build running without that stack has no services, and the panel's only
+   * content was an explanation of why it was empty. That is not an error
+   * state worth a permanent tab — it is a screen that does not apply here.
+   *
+   * `null` means the probe has not answered yet, and the tab stays: removing
+   * a control a beat after the user has seen it is worse than showing one for
+   * a beat too long.
+   */
+  const available = useServicesStore(servicesAvailable);
+  const items = available === false
+    ? ALL_ITEMS.filter((i) => i !== 'services')
+    : ALL_ITEMS;
+
+  // If the panel is open when the answer arrives, leave it rather than
+  // stranding the reader on a view whose tab no longer exists.
+  useEffect(() => {
+    if (available === false && view === 'services') setView('system');
+  }, [available, view, setView]);
+
   return (
     <nav aria-label="Main navigation" className="flex items-center gap-1 shrink-0">
-      {ITEMS.map((item) => {
+      {items.map((item) => {
         const active = view === item;
         return (
           <button

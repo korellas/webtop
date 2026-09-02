@@ -20,6 +20,24 @@ export function useServicesPoll(active: boolean) {
   const apply = useServicesStore((s) => s.apply);
   const setFetchError = useServicesStore((s) => s.setFetchError);
 
+  // One probe at startup, whether or not the panel is open, purely to learn
+  // whether this machine has a manifest at all — `NavBar` hides the tab when
+  // it does not, and a tab that only reveals its own absence once you press it
+  // is worse than no tab.
+  //
+  // It is not free, but it is cheap exactly where it runs often: with no
+  // manifest the endpoint has nothing to shell out to and returns immediately.
+  // The machines that pay for the probe are the ones whose answer is "yes,
+  // and here is the list", which the panel wants anyway.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    let cancelled = false;
+    fetchServices(ctrl.signal)
+      .then((data) => { if (!cancelled) apply(data); })
+      .catch(() => { /* Availability is unknown, so the tab stays. */ });
+    return () => { cancelled = true; ctrl.abort(); };
+  }, [apply]);
+
   useEffect(() => {
     if (!active) return;
 

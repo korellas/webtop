@@ -24,8 +24,157 @@
 //! bound. That is a real limit — a root daemon's Metal allocations stay
 //! invisible — but it is strictly better than what RSS gave every row.
 
-use std::collections::HashMap;
+use crate::collector::snapshot::ProcessInfo;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::process::Command;
+use std::time::Instant;
+
+const PROCESS_WINDOW_SECS: f32 = 5.0;
+
+#[derive(Clone)]
+struct ProcessSample {
+    at: Instant,
+    cpu: f32,
+    gpu: f32,
+    mem: u64,
+    name: String,
+    user: String,
+    cmd: String,
+}
+
+/// Stateful process sampler used only by process-related HTTP endpoints.
+///
+/// Keeping the cumulative counters here means the main metrics collector can
+/// run without enumerating processes. CPU/GPU deltas resume naturally on the
+/// next request while the process panel is open.
+#[derive(Default)]
+pub struct ProcessSampler {
+    history: HashMap<u32, VecDeque<ProcessSample>>,
+    previous_gpu_time_ns: HashMap<u32, u64>,
+    previous_gpu_sample_at: Option<Instant>,
+    previous_cpu_time: HashMap<u32, f64>,
+    previous_cpu_sample_at: Option<Instant>,
+}
+
+impl ProcessSampler {
+    pub fn sample(&mut self, system_gpu_usage: f32, total_cores: usize) -> Vec<ProcessInfo> {
+        let now = Instant::now();
+        let current_gpu_ns = super::gpu_procs::sample();
+        let mut per_pid_gpu_pct: HashMap<u32, f32> = HashMap::new();
+        if let Some(previous_at) = self.previous_gpu_sample_at {
+            let elapsed = now.duration_since(previous_at).as_secs_f64().max(0.05);
+            let mut raw_total_pct = 0.0;
+            for (pid, current_ns) in &current_gpu_ns {
+                let previous_ns = self.previous_gpu_time_ns.get(pid).copied().unwrap_or(0);
+                if *current_ns >= previous_ns {
+                    let delta_ns = (*current_ns - previous_ns) as f64;
+                    let percent = delta_ns / (elapsed * 1_000_000_000.0) * 100.0;
+                    if percent > 0.0 {
+                        per_pid_gpu_pct.insert(*pid, percent as f32);
+                        raw_total_pct += percent;
+                    }
+                }
+            }
+            if raw_total_pct > 0.01 && system_gpu_usage > 0.01 {
+                let scale = system_gpu_usage as f64 / raw_total_pct;
+                for value in per_pid_gpu_pct.values_mut() {
+                    *value = (*value as f64 * scale) as f32;
+                }
+            }
+        }
+        self.previous_gpu_time_ns = current_gpu_ns;
+        self.previous_gpu_sample_at = Some(now);
+
+        let rows = sample_ps();
+        let cpu_elapsed = self
+            .previous_cpu_sample_at
+            .map(|at| now.duration_since(at).as_secs_f64().max(0.05));
+        let mut current_cpu_time = HashMap::with_capacity(rows.len());
+        let total_cores = total_cores.max(1) as f32;
+
+        let live: Vec<_> = rows
+            .iter()
+            .map(|row| {
+                current_cpu_time.insert(row.pid, row.cpu_time_secs);
+                let cpu_per_core = match (cpu_elapsed, self.previous_cpu_time.get(&row.pid)) {
+                    (Some(elapsed), Some(previous)) if row.cpu_time_secs >= *previous => {
+                        ((row.cpu_time_secs - previous) / elapsed * 100.0) as f32
+                    }
+                    _ => 0.0,
+                };
+                (
+                    row.pid,
+                    (cpu_per_core / total_cores).clamp(0.0, 100.0),
+                    row.mem_bytes,
+                    row.name.clone(),
+                    row.user.clone(),
+                    row.args.clone(),
+                )
+            })
+            .collect();
+        self.previous_cpu_time = current_cpu_time;
+        self.previous_cpu_sample_at = Some(now);
+
+        let live_pids: HashSet<u32> = live.iter().map(|(pid, ..)| *pid).collect();
+        for (pid, cpu, mem, name, user, cmd) in live {
+            let sample = ProcessSample {
+                at: now,
+                cpu,
+                gpu: per_pid_gpu_pct.get(&pid).copied().unwrap_or(0.0),
+                mem,
+                name,
+                user,
+                cmd,
+            };
+            let samples = self.history.entry(pid).or_default();
+            samples.push_back(sample);
+            while samples.front().is_some_and(|front| {
+                now.duration_since(front.at).as_secs_f32() > PROCESS_WINDOW_SECS
+            }) {
+                samples.pop_front();
+            }
+        }
+        self.history.retain(|pid, _| live_pids.contains(pid));
+
+        let all: Vec<ProcessInfo> = self
+            .history
+            .iter()
+            .filter_map(|(pid, samples)| {
+                let count = samples.len() as f32;
+                let last = samples.back()?;
+                Some(ProcessInfo {
+                    pid: *pid,
+                    name: last.name.clone(),
+                    user: last.user.clone(),
+                    cpu_percent: samples.iter().map(|sample| sample.cpu).sum::<f32>() / count,
+                    gpu_percent: samples.iter().map(|sample| sample.gpu).sum::<f32>() / count,
+                    mem_bytes: last.mem,
+                    cmd: last.cmd.clone(),
+                })
+            })
+            .collect();
+
+        let mut by_cpu = all.clone();
+        by_cpu.sort_by(|a, b| b.cpu_percent.total_cmp(&a.cpu_percent));
+        by_cpu.truncate(60);
+        let mut by_memory = all.clone();
+        by_memory.sort_by(|a, b| b.mem_bytes.cmp(&a.mem_bytes));
+        by_memory.truncate(40);
+        let mut by_gpu = all;
+        by_gpu.sort_by(|a, b| b.gpu_percent.total_cmp(&a.gpu_percent));
+        by_gpu.truncate(40);
+
+        let mut seen = HashSet::new();
+        let mut result = Vec::with_capacity(120);
+        for process in by_cpu.into_iter().chain(by_gpu).chain(by_memory) {
+            if seen.insert(process.pid) {
+                result.push(process);
+            }
+        }
+        result.sort_by(|a, b| b.cpu_percent.total_cmp(&a.cpu_percent));
+        result
+    }
+}
 
 /// One parsed `ps` row. `cpu_time_secs` is *cumulative* CPU time consumed
 /// by the process since it started; the collector diffs it across ticks to
@@ -61,7 +210,7 @@ const ARGS_MAX: usize = 512;
 /// Sample every process via `ps`. Returns an empty Vec if `ps` can't be
 /// run or produced nothing parseable (the caller treats that as "no
 /// processes this tick" rather than failing the whole snapshot).
-pub fn sample() -> Vec<PsRow> {
+fn sample_ps() -> Vec<PsRow> {
     // `-A` = every process, `-x` is implied by `-A`. `-o … =` suppresses the
     // header for each column. `comm` is last because it (the executable path)
     // can contain spaces — everything after the 4th column is the command.

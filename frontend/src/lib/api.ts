@@ -32,6 +32,9 @@ export const fetchNetworkInterfaces = (signal?: AbortSignal) =>
 export const fetchGpuProcesses = (signal?: AbortSignal) =>
   getJson<ProcessInfo[]>('/api/gpu_processes', signal);
 
+export const fetchProcesses = (signal?: AbortSignal) =>
+  getJson<ProcessInfo[]>('/api/processes', signal);
+
 /** Total up/down bytes transferred over `range`, integrated server-side. */
 export const fetchNetworkTotals = (range: Timescale, signal?: AbortSignal) =>
   getJson<NetworkTotals>(`/api/network_totals?range=${range}`, signal);

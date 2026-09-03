@@ -157,11 +157,7 @@ pub async fn get_network_totals(
 pub async fn get_processes(
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<crate::collector::snapshot::ProcessInfo>> {
-    let rb = crate::sync::guard(state.ring_buffer.read());
-    match rb.latest() {
-        Some(snap) => Json(snap.processes.clone()),
-        None => Json(vec![]),
-    }
+    Json(sample_processes(&state).await)
 }
 
 // ─── New detail-drawer endpoints ────────────────────────────────────────────
@@ -175,20 +171,15 @@ pub async fn get_network_interfaces(
     Json(crate::collector::net_interfaces::list_interfaces())
 }
 
-/// Top GPU-using processes — derived from the latest snapshot's process list.
+/// Top GPU-using processes, sampled only when its detail UI requests them.
 pub async fn get_gpu_processes(
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<crate::collector::snapshot::ProcessInfo>> {
-    let rb = crate::sync::guard(state.ring_buffer.read());
-    let mut procs: Vec<_> = match rb.latest() {
-        Some(snap) => snap
-            .processes
-            .iter()
-            .filter(|p| p.gpu_percent > 0.05)
-            .cloned()
-            .collect(),
-        None => vec![],
-    };
+    let mut procs: Vec<_> = sample_processes(&state)
+        .await
+        .into_iter()
+        .filter(|process| process.gpu_percent > 0.05)
+        .collect();
     // `partial_cmp` is None for NaN, which a bad GPU sample can produce —
     // unwrapping here would panic the handler. Treat those as equal.
     procs.sort_by(|a, b| {
@@ -198,6 +189,21 @@ pub async fn get_gpu_processes(
     });
     procs.truncate(8);
     Json(procs)
+}
+
+async fn sample_processes(state: &Arc<AppState>) -> Vec<crate::collector::snapshot::ProcessInfo> {
+    let gpu_usage = crate::sync::guard(state.ring_buffer.read())
+        .latest()
+        .map(|snapshot| snapshot.gpu_usage)
+        .unwrap_or(0.0);
+    let total_cores = state.system_info.core_kinds.len();
+    let sampler = Arc::clone(&state.process_sampler);
+
+    tokio::task::spawn_blocking(move || {
+        crate::sync::guard(sampler.lock()).sample(gpu_usage, total_cores)
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[derive(Deserialize)]
@@ -250,5 +256,50 @@ pub async fn get_network_history(
         Ok(Some(h)) => Ok(Json(h)),
         Ok(None) => Err(StatusCode::BAD_REQUEST),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collector::snapshot::ProcessInfo;
+    use crate::storage::db::MetricsDb;
+    use crate::system_info::SystemInfo;
+
+    fn test_state() -> Arc<AppState> {
+        AppState::new(
+            SystemInfo {
+                model: "Test Mac".into(),
+                chip: "test".into(),
+                p_core_count: 0,
+                e_core_count: 0,
+                gpu_core_count: 0,
+                mem_total: 0,
+                disk_total: 0,
+                os_version: "test".into(),
+                net_link_speed_bytes_sec: 0,
+                core_kinds: vec![],
+            },
+            Arc::new(MetricsDb::open(":memory:").unwrap()),
+            std::path::PathBuf::from("/nonexistent/services.json"),
+            "/nonexistent/helper".into(),
+        )
+    }
+
+    #[tokio::test]
+    async fn processes_endpoint_does_not_serve_the_periodic_snapshot_cache() {
+        let state = test_state();
+        crate::sync::guard(state.ring_buffer.write()).push(SystemSnapshot {
+            processes: vec![ProcessInfo {
+                pid: u32::MAX,
+                name: "stale-sentinel".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+
+        let Json(processes) = get_processes(State(state)).await;
+
+        assert!(!processes.iter().any(|process| process.pid == u32::MAX));
     }
 }

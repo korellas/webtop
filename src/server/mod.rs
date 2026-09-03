@@ -13,7 +13,7 @@ use crate::storage::db::MetricsDb;
 use crate::storage::ring_buffer::RingBuffer;
 use crate::system_info::SystemInfo;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::broadcast;
 
 pub struct AppState {
@@ -25,6 +25,10 @@ pub struct AppState {
     pub folder_scan: Arc<ScanCoordinator>,
     /// The declared service list, reloaded when the file on disk changes.
     pub services: Arc<ManifestSource>,
+    /// Stateful CPU/GPU deltas for process-related endpoints. It is separate
+    /// from the periodic metrics collector so process enumeration only occurs
+    /// while a process UI is requesting it.
+    pub process_sampler: Arc<Mutex<crate::collector::processes::ProcessSampler>>,
     /// Root-owned wrapper that performs privileged service control. Kept as
     /// configuration because webtop is a general tool and must not hardcode
     /// one stack's layout.
@@ -46,6 +50,7 @@ impl AppState {
             db,
             folder_scan: Arc::new(ScanCoordinator::default()),
             services: Arc::new(ManifestSource::new(manifest_path)),
+            process_sampler: Arc::new(Mutex::new(Default::default())),
             control_helper,
         })
     }

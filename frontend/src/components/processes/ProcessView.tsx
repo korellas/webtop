@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
-import { useMetricsStore } from '../../store/metrics-store';
+import { useEffect, useMemo, useState } from 'react';
 import { useSystemStore } from '../../store/system-store';
+import { fetchProcesses } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
 import { heatBackground } from '../../lib/heat';
 import type { ProcessInfo } from '../../lib/types';
@@ -21,14 +21,32 @@ type SortDir = 'asc' | 'desc';
  */
 /** `query` is owned by App so the search box can live in the overlay's title row. */
 export default function ProcessView({ query }: { query: string }) {
-  const snapshot = useMetricsStore((s) => s.snapshots[s.snapshots.length - 1]);
   const info = useSystemStore((s) => s.info);
 
+  const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>('cpu_percent');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selected, setSelected] = useState<number | null>(null);
 
-  const processes = useMemo(() => snapshot?.processes ?? [], [snapshot]);
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function refresh() {
+      try {
+        setProcesses(await fetchProcesses(controller.signal));
+      } catch {
+        // Closing the overlay aborts the request. Keep the previous rows for
+        // transient errors rather than flashing an empty process table.
+      }
+    }
+
+    refresh();
+    const interval = setInterval(refresh, 5_000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  }, []);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -156,7 +174,7 @@ export default function ProcessView({ query }: { query: string }) {
           )}
         </span>
         <span className="ml-auto text-text-muted">
-          Sampled every ~2s · showing the collector's top processes
+          Sampled every ~5s while this panel is open
         </span>
       </footer>
     </div>

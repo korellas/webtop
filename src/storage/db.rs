@@ -494,6 +494,42 @@ impl MetricsDb {
         tx.commit()
     }
 
+    pub fn query_samples(&self, since: u64) -> rusqlite::Result<Vec<SystemSnapshot>> {
+        let conn = crate::sync::guard(self.conn.lock());
+        let mut stmt = conn.prepare(
+            "SELECT timestamp, cpu_total, cpu_p_cores, cpu_e_cores, gpu_usage,
+                    mem_used, mem_swap_used, disk_read_bytes_sec, disk_write_bytes_sec,
+                    net_up_bytes_sec, net_down_bytes_sec, power_total_w, power_cpu_w,
+                    power_gpu_w, power_other_w, COALESCE(cpu_temp_c, 0),
+                    COALESCE(gpu_temp_c, 0), COALESCE(fan_rpm, 0)
+             FROM metrics_raw WHERE timestamp >= ?1 ORDER BY timestamp",
+        )?;
+        let rows = stmt.query_map([since], |row| {
+            Ok(SystemSnapshot {
+                timestamp: row.get(0)?,
+                cpu_total: row.get(1)?,
+                cpu_p_cores: row.get(2)?,
+                cpu_e_cores: row.get(3)?,
+                gpu_usage: row.get(4)?,
+                mem_used: row.get(5)?,
+                mem_swap_used: row.get(6)?,
+                disk_read_bytes_sec: row.get(7)?,
+                disk_write_bytes_sec: row.get(8)?,
+                net_up_bytes_sec: row.get(9)?,
+                net_down_bytes_sec: row.get(10)?,
+                power_total_w: row.get(11)?,
+                power_cpu_w: row.get(12)?,
+                power_gpu_w: row.get(13)?,
+                power_other_w: row.get(14)?,
+                cpu_temp_c: row.get(15)?,
+                gpu_temp_c: row.get(16)?,
+                fan_rpm: row.get(17)?,
+                ..Default::default()
+            })
+        })?;
+        rows.collect()
+    }
+
     /// Query the raw table with time-bucketed averaging.
     ///
     /// `since` — earliest timestamp to include (Unix milliseconds).

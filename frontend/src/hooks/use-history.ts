@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { showsRawSamples, TIMESCALE_MS } from '../lib/chart-utils';
 import { fetchNetworkTotals } from '../lib/api';
 import { useMetricsStore } from '../store/metrics-store';
 import { useTimescaleStore } from '../store/timescale-store';
@@ -24,24 +25,36 @@ import type { SystemInfo, SystemSnapshot, Timescale } from '../lib/types';
  * keeps every trigger's intent while paying for the window once; a later
  * reload is not affected, because by then nothing is in flight.
  */
-let inFlight: { timescale: Timescale; promise: Promise<void> } | null = null;
+let inFlight: { timescale: Timescale; promise: Promise<void>; controller: AbortController } | null = null;
 
 export function loadHistory(timescale: Timescale): Promise<void> {
   if (inFlight && inFlight.timescale === timescale) return inFlight.promise;
-  const promise = fetchHistory(timescale).finally(() => {
+  inFlight?.controller.abort();
+  const controller = new AbortController();
+  const promise = fetchHistory(timescale, controller.signal).finally(() => {
     if (inFlight?.promise === promise) inFlight = null;
   });
-  inFlight = { timescale, promise };
+  inFlight = { timescale, promise, controller };
   return promise;
 }
 
-async function fetchHistory(timescale: Timescale): Promise<void> {
+async function fetchHistory(timescale: Timescale, signal: AbortSignal): Promise<void> {
   try {
-    const res = await fetch(`/api/history?range=${timescale}`);
+    const res = await fetch(`/api/history?range=${timescale}`, { signal });
     if (!res.ok) throw new Error(`/api/history → HTTP ${res.status}`);
     const data: SystemSnapshot[] = await res.json();
-    useMetricsStore.getState().setHistory(data);
+    if (signal.aborted || useTimescaleStore.getState().timescale !== timescale) return;
+    const store = useMetricsStore.getState();
+    if (showsRawSamples(timescale)) {
+      // A WebSocket sample can arrive after the database read and before its response.
+      const last = data.at(-1)?.timestamp ?? Date.now() - TIMESCALE_MS[timescale];
+      const newer = store.snapshots.filter(s => s.sample_count == null && s.timestamp > last);
+      store.setHistory(data.concat(newer));
+    } else {
+      store.setHistory(data);
+    }
   } catch (e) {
+    if (signal.aborted) return;
     // Record the failure, don't just log it. Swallowing this left the previous
     // window's data on screen with nothing to say it was stale — the exact
     // shape of the old `30d` bug, where an unsupported range 400'd on every

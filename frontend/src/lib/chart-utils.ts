@@ -63,21 +63,12 @@ export const TIMESCALE_MS: Record<Timescale, number> = {
   '7d': 604_800_000,
 };
 
-/**
- * Max data points to render per timescale.
- *
- * These MUST mirror the server's bucket widths in `api.rs::get_history`, or the
- * client re-buckets history on a different grid than the server used and the
- * two disagree about where each point sits.
- *
- * Sized against the collector's 2 s active cadence; idle history is sparser.
- * A bucket narrower than ~2× the active sample period holds one row, so
- * nothing is actually averaged — that
- * is why the 5 m view looked like raw noise rather than a five-minute overview.
- */
-const MAX_POINTS: Record<Timescale, number> = {
-  '1m': 30,    // 2s buckets — raw by design, only ~30 samples exist in the window
-  '5m': 75,    // 4s buckets
+export function showsRawSamples(timescale: Timescale): timescale is '1m' | '5m' {
+  return timescale === '1m' || timescale === '5m';
+}
+
+/** Bucket widths match the history endpoint's aggregation grid. */
+const MAX_POINTS: Record<Exclude<Timescale, '1m' | '5m'>, number> = {
   '15m': 150,  // 6s buckets
   '1h': 360,   // 10s buckets
   '24h': 360,  // 4min buckets
@@ -109,13 +100,14 @@ export function downsample<T extends { timestamp: number; sample_count?: number 
 ): T[] {
   if (data.length === 0) return data;
 
+  if (showsRawSamples(timescale)) {
+    const since = data[data.length - 1].timestamp - TIMESCALE_MS[timescale];
+    return data.filter(row => row.timestamp >= since && row.sample_count == null);
+  }
+
   const max = MAX_POINTS[timescale];
   const windowMs = TIMESCALE_MS[timescale];
   const bucketMs = Math.max(1000, Math.floor(windowMs / max));
-
-  // Fast-path: already at or below bucket resolution (e.g. 1m view with
-  // raw 1-s samples, bucketMs == 1000 and data.length <= 60).
-  if (data.length <= max && bucketMs <= 1500) return data;
 
   // Absolute bucket index for a sample at time T: `floor(T / bucketMs)`.
   // This is stable across calls — the same sample always maps to the same

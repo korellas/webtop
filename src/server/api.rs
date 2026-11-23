@@ -43,31 +43,16 @@ pub async fn get_history(
         .unwrap_or_default()
         .as_millis() as u64;
 
-    // (window_ms, bucket_ms)
-    //
-    // Bucket sizes match the frontend's render resolution (`MAX_POINTS` in
-    // `chart-utils.ts`). If the backend were coarser than the frontend wants,
-    // a page refresh would show a sparser chart than the live-running one
-    // — because live WebSocket samples fill in the finer grid, while
-    // historical rows only cover one slot per minute.
-    // Bucket widths are sized against the collector's 2 s active cadence.
-    // With no live clients the collector backs off, so idle history is sparser.
-    //
-    // This matters because a bucket narrower than ~2× the active sample period holds a
-    // single row, so `AVG`/`MIN`/`MAX` all collapse to that one value: no
-    // aggregation happens, the chart draws raw sample-to-sample noise, and the
-    // min/max band is zero-width. The 5 m view was the visible symptom — 2 s
-    // buckets against 2 s samples, so a "5 minute overview" was really an
-    // unsmoothed trace of every individual reading.
-    //
-    // 1 m deliberately stays at one sample per bucket: at that range you want
-    // every reading, and there are only ~30 of them in the window anyway.
-    // `MAX_POINTS` in `chart-utils.ts` mirrors these — keep the two in sync or
-    // the client re-buckets on a different grid than the server used.
     let window_ms = window_ms_for_range(range).ok_or(StatusCode::BAD_REQUEST)?;
+    let since = now.saturating_sub(window_ms);
     let bucket_ms: u64 = match range {
-        "1m" => 2_000,    // 30 pts — raw, 1 sample/bucket by design
-        "5m" => 4_000,    // 75 pts, ~2 samples/bucket
+        "1m" | "5m" => {
+            return state
+                .db
+                .query_samples(since)
+                .map(Json)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
+        }
         "15m" => 6_000,   // 150 pts, ~3 samples/bucket
         "1h" => 10_000,   // 360 pts, ~5 samples/bucket
         "24h" => 240_000, // 360 pts, ~116 samples/bucket
@@ -78,7 +63,6 @@ pub async fn get_history(
         _ => unreachable!("validated by window_ms_for_range above"),
     };
 
-    let since = now.saturating_sub(window_ms);
     // Long ranges read pre-aggregated buckets; short ones go straight to the
     // raw rows, where the window is small enough that folding it costs less
     // than a millisecond. `rollup_serves` is the only thing that decides, so a
@@ -285,6 +269,48 @@ mod tests {
             std::path::PathBuf::from("/nonexistent/services.json"),
             "/nonexistent/helper".into(),
         )
+    }
+
+    #[tokio::test]
+    async fn short_history_keeps_each_measurement_at_its_recorded_time() {
+        let state = test_state();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let base = now / 12_000 * 12_000 - 12_000;
+        let samples = [(base + 123, 0.0), (base + 967, 100.0), (base + 2_147, 0.0)];
+        for &(timestamp, cpu_total) in &samples {
+            state
+                .db
+                .insert_raw(&SystemSnapshot {
+                    timestamp,
+                    cpu_total,
+                    ..Default::default()
+                })
+                .unwrap();
+        }
+        for range in ["1m", "5m", "15m"] {
+            let Json(rows) = get_history(
+                State(state.clone()),
+                Query(HistoryQuery {
+                    range: Some(range.into()),
+                }),
+            )
+            .await
+            .unwrap();
+            if range == "15m" {
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].sample_count, Some(3));
+                assert_eq!(rows[0].band.as_ref().unwrap().cpu_total, [0.0, 100.0]);
+            } else {
+                let points: Vec<_> = rows.iter().map(|s| (s.timestamp, s.cpu_total)).collect();
+                assert_eq!(points, samples);
+                assert!(rows
+                    .iter()
+                    .all(|s| s.band.is_none() && s.sample_count.is_none()));
+            }
+        }
     }
 
     #[tokio::test]

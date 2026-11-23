@@ -35,12 +35,14 @@ export const useMetricsStore = create<MetricsState & MetricsActions>()((set) => 
   networkTotals: null,
 
   pushSnapshot: (snap) =>
-    set((state) => ({
-      snapshots:
-        state.snapshots.length >= MAX_BUFFER
-          ? [...state.snapshots.slice(1), snap]
-          : [...state.snapshots, snap],
-    })),
+    set(({ snapshots }) => {
+      const last = snapshots.at(-1);
+      if (last?.timestamp === snap.timestamp && last.sample_count == null) {
+        return { snapshots: [...snapshots.slice(0, -1), snap] };
+      }
+      const retained = snapshots.length >= MAX_BUFFER ? snapshots.slice(1) : snapshots;
+      return { snapshots: [...retained, snap] };
+    }),
 
   setHistory: (history) => set({ snapshots: history, historyError: null }),
   setHistoryError: (historyError) => set({ historyError }),

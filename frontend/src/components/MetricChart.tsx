@@ -7,7 +7,7 @@ import { useTimescaleStore } from '../store/timescale-store';
 import { useHoverStore } from '../store/hover-store';
 import { useChartSettingsStore } from '../store/chart-settings-store';
 import {
-  downsample, formatXTick, getXDomain, getXTickCount,
+  downsample, showsRawSamples, formatXTick, getXDomain, getXTickCount,
   BAND_LO, BAND_HI,
 } from '../lib/chart-utils';
 import ChartHoverEcho, { type EchoSeries } from './ChartHoverEcho';
@@ -339,6 +339,9 @@ export default function MetricChart({
    * is.
    */
   const troughLines = peakLines.filter((l) => l.trough);
+  const raw = showsRawSamples(timescale);
+  const bucketPeaks = raw ? [] : peakLines;
+  const bucketTroughs = raw ? [] : troughLines;
 
   /** Where + what each peak/trough line's window extreme actually is —
    *  feeds both the on-chart dot markers and their legend rows. */
@@ -418,7 +421,7 @@ export default function MetricChart({
    *  the same order Recharts hands them over (band carriers, then lines). */
   const echoLabel = (key: string) => allLegend.find((l) => l.dataKey === key)?.label ?? key;
   const echoSeries: EchoSeries[] = [
-    ...peakLines.map((l) => ({
+    ...bucketPeaks.map((l) => ({
       dataKey: `${l.dataKey}${BAND_HI}`,
       color: l.color,
       label: echoLabel(`${l.dataKey}${BAND_HI}`),
@@ -426,7 +429,7 @@ export default function MetricChart({
       format: formatterFor(l),
       dot: false,
     })),
-    ...troughLines.map((l) => ({
+    ...bucketTroughs.map((l) => ({
       dataKey: `${l.dataKey}${BAND_LO}`,
       color: l.color,
       label: echoLabel(`${l.dataKey}${BAND_LO}`),
@@ -437,7 +440,7 @@ export default function MetricChart({
     ...lines.map((l) => ({
       dataKey: l.dataKey,
       color: l.color,
-      label: `${echoLabel(l.dataKey)} avg`,
+      label: raw ? echoLabel(l.dataKey) : `${echoLabel(l.dataKey)} avg`,
       secondary: l.secondary,
       format: formatterFor(l),
     })),
@@ -637,7 +640,7 @@ export default function MetricChart({
                       .map((entry) => {
                       const legendItem = allLegend.find((l) => l.dataKey === entry.dataKey);
                       const label = legendItem?.label ?? entry.dataKey;
-                      const itemLabel = legendItem?.shaded ? label : `${label} avg`;
+                      const itemLabel = raw || legendItem?.shaded ? label : `${label} avg`;
                       // Pick the right formatter for this line — its own
                       // override if it has one (e.g. fan RPM re-expressed
                       // as % to share CPU temp's axis still wants to show
@@ -682,7 +685,7 @@ export default function MetricChart({
               legend's tier 3; this Area is what makes the *per-bucket*
               extreme available on hover as well.
             */}
-            {peakLines.map((line) => (
+            {bucketPeaks.map((line) => (
               <Area
                 key={`peakval-${line.dataKey}`}
                 type="linear"
@@ -696,7 +699,7 @@ export default function MetricChart({
               />
             ))}
             {/* Invisible tooltip-value carrier for the trough — see the peak's twin above. */}
-            {troughLines.map((line) => (
+            {bucketTroughs.map((line) => (
               <Area
                 key={`troughval-${line.dataKey}`}
                 type="linear"
@@ -744,7 +747,7 @@ export default function MetricChart({
                 />
               );
             })}
-            {peakLines.map((line) => (
+            {bucketPeaks.map((line) => (
               <PeakStems key={line.dataKey} rows={buckets} line={line} />
             ))}
             {/* Always mounted, and it subscribes to the hover itself — that is

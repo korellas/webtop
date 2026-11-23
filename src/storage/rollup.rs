@@ -163,6 +163,7 @@ fn reaggregate_exprs() -> String {
 /// to agree with that order.
 fn decode(row: &Row) -> rusqlite::Result<AggregatedMetric> {
     Ok(AggregatedMetric {
+        sample_count: row.get(36)?,
         timestamp: row.get(0)?,
         cpu_total: row.get(1)?,
         cpu_p_cores: row.get(2)?,
@@ -314,7 +315,7 @@ impl MetricsDb {
                  WHERE timestamp >= ?5
                  GROUP BY t
              )
-             SELECT (t / ?1) * ?1 AS bucket, {out}
+             SELECT (t / ?1) * ?1 AS bucket, {out}, SUM(n)
              FROM parts
              GROUP BY bucket
              ORDER BY bucket ASC"
@@ -393,6 +394,7 @@ mod tests {
             );
             for (r, o) in raw.iter().zip(rolled.iter()) {
                 assert_eq!(r.timestamp, o.timestamp);
+                assert_eq!(r.sample_count, o.sample_count);
                 assert!(
                     (r.cpu_total - o.cpu_total).abs() < 1e-3,
                     "cpu mean differs at {} width {bucket_ms}: {} vs {}",

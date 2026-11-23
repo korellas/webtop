@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SystemSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_count: Option<u64>,
     pub timestamp: u64,
     pub cpu_total: f32,
     pub cpu_p_cores: f32,
@@ -101,6 +103,7 @@ pub struct BatteryInfo {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AggregatedMetric {
+    pub sample_count: u64,
     pub timestamp: u64,
     pub cpu_total: f32,
     pub cpu_p_cores: f32,

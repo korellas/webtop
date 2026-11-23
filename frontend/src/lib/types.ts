@@ -1,4 +1,5 @@
 export interface SystemSnapshot {
+  sample_count?: number;
   timestamp: number;
   cpu_total: number;
   cpu_p_cores: number;

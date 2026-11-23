@@ -1,13 +1,14 @@
 import { useRef, useLayoutEffect, useMemo, useCallback, useState, useEffect } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip, ReferenceLine,
+  useXAxisScale, useYAxisScale, usePlotArea,
 } from 'recharts';
 import { useTimescaleStore } from '../store/timescale-store';
 import { useHoverStore } from '../store/hover-store';
 import { useChartSettingsStore } from '../store/chart-settings-store';
 import {
-  downsample, smooth, formatXTick, getXDomain, getXTickCount,
-  aggregates, BAND_LO, BAND_HI,
+  downsample, formatXTick, getXDomain, getXTickCount,
+  BAND_LO, BAND_HI,
 } from '../lib/chart-utils';
 import ChartHoverEcho, { type EchoSeries } from './ChartHoverEcho';
 
@@ -48,7 +49,7 @@ interface LineConfig {
    *  (utilisation, power, byte rates) the minimum sits at or near zero
    *  and says nothing; this is for series where a dip is real signal
    *  (temperature, fan RPM). Requires the line's data to carry a band
-   *  (see `bandKeys` below). */
+   *  in the history data. */
   trough?: boolean;
   /** Override the axis-based formatter for this line's tooltip row and
    *  peak/trough label. For a line plotted on a shared/normalized scale
@@ -56,6 +57,33 @@ interface LineConfig {
    *  0–100 axis instead of needing its own), the axis formatter no
    *  longer describes this line's real unit — this does. */
   formatter?: (v: number) => string;
+}
+
+/** Draw disjoint bucket extremes as one SVG path per series. */
+function PeakStems({ rows, line }: { rows: Record<string, unknown>[]; line: LineConfig }) {
+  const xScale = useXAxisScale();
+  const yScale = useYAxisScale(line.secondary ? 'right' : 'left');
+  const plot = usePlotArea();
+  if (!plot || !xScale || !yScale) return null;
+
+  const segments: string[] = [];
+  for (const row of rows) {
+    const mean = row[line.dataKey];
+    const low = line.trough ? row[line.dataKey + BAND_LO] : mean;
+    const high = row[line.dataKey + BAND_HI];
+    if (typeof low !== 'number' || typeof high !== 'number' || high <= low) continue;
+    if (typeof row.timestamp !== 'number') continue;
+    const x = xScale(row.timestamp);
+    if (x == null || x < plot.x || x > plot.x + plot.width) continue;
+    const bottom = yScale(low);
+    const top = yScale(high);
+    if (bottom != null && top != null) segments.push(`M${x},${bottom}V${top}`);
+  }
+
+  return segments.length ? (
+    <path data-peaks={line.dataKey} d={segments.join(' ')} fill="none"
+      stroke={line.color} strokeWidth={1} strokeOpacity={0.65} pointerEvents="none" />
+  ) : null;
 }
 
 export interface LegendItem {
@@ -289,29 +317,10 @@ export default function MetricChart({
   const isPhone = useIsPhone();
   const xDomain = getXDomain(timescale);
   const xTickCount = getXTickCount(timescale);
-  // 1) Bucket the series down to MAX_POINTS[timescale]
-  // 2) Smooth the bucket means so per-bucket variance doesn't leave visible
-  //    kinks. Adjacent buckets can differ a lot during bursty workloads, and a
-  //    5-sample window smooths across ~50 s of real time at 1 h, which matches
-  //    the "trend line" people actually want at longer ranges.
-  // 3) Where buckets genuinely aggregate, replace each mean with that bucket's
-  //    maximum as a companion line named "peak" in the legend.
-  const m4 = aggregates(timescale);
-  // Memoized: bucketing and smoothing walk every retained sample (up to the
-  // 3 600-entry buffer), and they only depend on the data and the window. Any
-  // other reason to re-render — a theme flip, an autoscale toggle — must not
-  // pay for them again.
-  const smoothedMeans = useMemo(
-    () => smooth(downsample(data as { timestamp: number }[], timescale), 5),
+  const buckets = useMemo(
+    () => downsample(data as (Record<string, unknown> & { timestamp: number })[], timescale),
     [data, timescale],
   );
-
-  /** Series the backend ships per-bucket bounds for. */
-  const bandKeys = lines
-    .map((l) => l.dataKey)
-    .filter((k) => smoothedMeans[0] && `${k}${BAND_LO}` in (smoothedMeans[0] as object));
-
-  const smoothed = smoothedMeans;
 
   /** A line's own formatter if it has one (see `LineConfig.formatter`),
    *  else the axis-based one for whichever side it plots against. */
@@ -320,7 +329,7 @@ export default function MetricChart({
 
   /** Series that get a peak marker — where this line hit its highest
    *  value across the visible window. */
-  const peakLines = m4 ? lines.filter((l) => bandKeys.includes(l.dataKey)) : [];
+  const peakLines = lines.filter((l) => buckets[0] && l.dataKey + BAND_HI in buckets[0]);
 
   /**
    * Series that get a trough marker too — the mirror of `peakLines`,
@@ -329,13 +338,13 @@ export default function MetricChart({
    * doc on `LineConfig` for why this isn't on by default everywhere peak
    * is.
    */
-  const troughLines = m4 ? lines.filter((l) => bandKeys.includes(l.dataKey) && l.trough) : [];
+  const troughLines = peakLines.filter((l) => l.trough);
 
   /** Where + what each peak/trough line's window extreme actually is —
    *  feeds both the on-chart dot markers and their legend rows. */
   const peakExtremes: ExtremePoint[] = peakLines
     .map((l): ExtremePoint | undefined => {
-      const found = findExtreme(smoothed as Record<string, unknown>[], `${l.dataKey}${BAND_HI}`, 'max');
+      const found = findExtreme(buckets, `${l.dataKey}${BAND_HI}`, 'max');
       if (!found) return undefined;
       const format = formatterFor(l);
       return {
@@ -352,7 +361,7 @@ export default function MetricChart({
 
   const troughExtremes: ExtremePoint[] = troughLines
     .map((l): ExtremePoint | undefined => {
-      const found = findExtreme(smoothed as Record<string, unknown>[], `${l.dataKey}${BAND_LO}`, 'min');
+      const found = findExtreme(buckets, `${l.dataKey}${BAND_LO}`, 'min');
       if (!found) return undefined;
       const format = formatterFor(l);
       return {
@@ -428,7 +437,7 @@ export default function MetricChart({
     ...lines.map((l) => ({
       dataKey: l.dataKey,
       color: l.color,
-      label: echoLabel(l.dataKey),
+      label: `${echoLabel(l.dataKey)} avg`,
       secondary: l.secondary,
       format: formatterFor(l),
     })),
@@ -466,7 +475,7 @@ export default function MetricChart({
       <div ref={chartRef} className="absolute inset-0">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
-            data={smoothed}
+            data={buckets}
             // 6px of floor even when the X axis is hidden. The zero tick is
             // centred on its own value, so with a flush bottom half the label
             // sits outside the plot and Recharts drops it silently — every
@@ -627,7 +636,8 @@ export default function MetricChart({
                       .filter((entry) => typeof entry.value === 'number' && Number.isFinite(entry.value))
                       .map((entry) => {
                       const legendItem = allLegend.find((l) => l.dataKey === entry.dataKey);
-                      const itemLabel = legendItem?.label ?? entry.dataKey;
+                      const label = legendItem?.label ?? entry.dataKey;
+                      const itemLabel = legendItem?.shaded ? label : `${label} avg`;
                       // Pick the right formatter for this line — its own
                       // override if it has one (e.g. fan RPM re-expressed
                       // as % to share CPU temp's axis still wants to show
@@ -705,13 +715,7 @@ export default function MetricChart({
               return (
                 <Area
                   key={line.dataKey}
-                  // `monotone` (d3's monotoneX) is a cubic Hermite spline that
-                  // preserves local extrema, so it never overshoots — the right
-                  // curve for a dense, already-smoothed signal.
-                  //
-                  // The extremes live on their own `_m4` series above, so this
-                  // one stays the trend line at every range.
-                  type="monotone"
+                  type="linear"
                   yAxisId={line.secondary ? 'right' : 'left'}
                   dataKey={line.dataKey}
                   stroke={line.color}
@@ -722,12 +726,7 @@ export default function MetricChart({
                   // fills on one plot stop being two readable series and
                   // become one ambiguous wash — which is the whole reason
                   // `maxPerCard` on the primary tier is 1.
-                  //
-                  // Still withheld while the M4 trace is drawn: a gradient
-                  // under a trend line that the min/max trace keeps crossing
-                  // muddles both, and putting extremes on a hairline is only
-                  // cheap if nothing is painted behind them.
-                  fill={tier === 'primary' && !m4 ? `url(#grad-${line.dataKey})` : 'transparent'}
+                  fill={tier === 'primary' ? `url(#grad-${line.dataKey})` : 'transparent'}
                   fillOpacity={1}
                   // No per-point dot renderer. Recharts would otherwise mount a
                   // element per sample per series, which is thousands of nodes
@@ -745,22 +744,14 @@ export default function MetricChart({
                 />
               );
             })}
-            {/*
-              No end-of-line value pills and no peak/trough badges over the
-              plot. Both printed a number the legend already holds, and both
-              paid for the repetition in the one currency a 180px cell has
-              none of: they sat on the curves. The peak badge in particular
-              crossed the line it described.
-
-              The values did not go anywhere — the peak and trough rows are
-              tier 3 in the legend above, where they read as a different kind
-              of fact from the current value instead of competing with it.
-            */}
+            {peakLines.map((line) => (
+              <PeakStems key={line.dataKey} rows={buckets} line={line} />
+            ))}
             {/* Always mounted, and it subscribes to the hover itself — that is
                 what keeps a pointer move from re-rendering this whole chart. */}
             <ChartHoverEcho
               chartId={title}
-              rows={smoothed as Record<string, unknown>[]}
+              rows={buckets}
               series={echoSeries}
             />
           </AreaChart>

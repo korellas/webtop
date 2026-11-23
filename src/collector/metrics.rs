@@ -418,6 +418,7 @@ impl MetricsCollector {
             // The chart falls back to the point value so the band collapses
             // onto the line across the live tail.
             band: None,
+            sample_count: None,
         }
     }
 

@@ -122,6 +122,7 @@ pub async fn get_history(
                 battery: None,
                 processes: vec![],
                 band: Some(m.band),
+                sample_count: Some(m.sample_count),
             })
             .collect(),
     ))

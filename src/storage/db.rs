@@ -533,7 +533,7 @@ impl MetricsDb {
                 MIN(net_down_bytes_sec), MAX(net_down_bytes_sec),
                 MIN(disk_read_bytes_sec),  MAX(disk_read_bytes_sec),
                 MIN(disk_write_bytes_sec), MAX(disk_write_bytes_sec),
-                MIN(cpu_temp_c),         MAX(cpu_temp_c)
+                MIN(cpu_temp_c),         MAX(cpu_temp_c), COUNT(*)
              FROM metrics_raw
              WHERE timestamp >= ?2
              GROUP BY bucket
@@ -541,6 +541,7 @@ impl MetricsDb {
         )?;
         let rows = stmt.query_map(params![bucket_ms, since], |row| {
             Ok(AggregatedMetric {
+                sample_count: row.get(36)?,
                 timestamp: row.get(0)?,
                 cpu_total: row.get(1)?,
                 cpu_p_cores: row.get(2)?,

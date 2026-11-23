@@ -103,7 +103,7 @@ const MAX_POINTS: Record<Timescale, number> = {
  *
  * Empty buckets are skipped (Recharts connects surviving points with a line).
  */
-export function downsample<T extends { timestamp: number }>(
+export function downsample<T extends { timestamp: number; sample_count?: number }>(
   data: T[],
   timescale: Timescale,
 ): T[] {
@@ -139,6 +139,7 @@ export function downsample<T extends { timestamp: number }>(
   const numericKeys: string[] = [];
   const nonNumericKeys: string[] = [];
   for (const k of Object.keys(probe)) {
+    if (k === 'sample_count') continue;
     if (typeof probe[k] === 'number') numericKeys.push(k);
     else nonNumericKeys.push(k);
   }
@@ -154,7 +155,9 @@ export function downsample<T extends { timestamp: number }>(
    * else with the mean.
    */
   function foldBucket(bucket: T[]): Record<string, unknown> {
-    const agg: Record<string, unknown> = {};
+    const agg: Record<string, unknown> = {
+      sample_count: bucket.reduce((n, row) => n + (row.sample_count ?? 1), 0),
+    };
     for (const k of numericKeys) {
       const mode = k.endsWith(BAND_LO) ? 'min' : k.endsWith(BAND_HI) ? 'max' : 'mean';
       let sum = 0;
@@ -163,8 +166,9 @@ export function downsample<T extends { timestamp: number }>(
       for (const row of bucket) {
         const v = (row as Record<string, unknown>)[k];
         if (typeof v !== 'number' || !Number.isFinite(v)) continue;
-        count++;
-        if (mode === 'mean') sum += v;
+        const weight = row.sample_count ?? 1;
+        count += weight;
+        if (mode === 'mean') sum += v * weight;
         else if (mode === 'min') extreme = Math.min(extreme, v);
         else extreme = Math.max(extreme, v);
       }
@@ -174,10 +178,6 @@ export function downsample<T extends { timestamp: number }>(
   }
 
   const sortedIdx = Array.from(buckets.keys()).sort((a, b) => a - b);
-  // The last bucket (still filling) is treated specially: we pass the latest
-  // sample through unchanged so a sudden jump (e.g. CPU 0→100%) is visible
-  // on the chart immediately, not averaged down by the first few samples in
-  // the bucket. Every earlier bucket keeps its mean for a smooth trend line.
   const currentBucketIdx = sortedIdx.length > 0 ? sortedIdx[sortedIdx.length - 1] : null;
 
   const result: T[] = [];
@@ -220,99 +220,6 @@ export function downsample<T extends { timestamp: number }>(
     }
     agg.timestamp = bucketCenter;
     result.push(agg as T);
-  }
-
-  return result;
-}
-
-/**
- * How many raw collector samples a bucket at this timescale holds.
- *
- * Derived from the widths rather than listed, so changing `MAX_POINTS` cannot
- * leave the callers stale.
- */
-const COLLECTOR_PERIOD_MS = 2_000;
-const MIN_SAMPLES_PER_BUCKET_FOR_M4 = 5;
-
-function samplesPerBucket(timescale: Timescale): number {
-  return TIMESCALE_MS[timescale] / MAX_POINTS[timescale] / COLLECTOR_PERIOD_MS;
-}
-
-/**
- * Whether buckets at this timescale aggregate enough to hide anything.
- *
- * At 1 m a bucket is one sample wide, so `min == max == avg` and there is
- * nothing an extremes-preserving pass could recover; at 5 m it is two. Below
- * the threshold the plotted line already *is* the raw data, and `MinMaxTicks`
- * draws nothing.
- */
-export function aggregates(timescale: Timescale): boolean {
-  return samplesPerBucket(timescale) >= MIN_SAMPLES_PER_BUCKET_FOR_M4;
-}
-
-/**
- * Centered rolling mean over the trend series. Per-bucket bounds are left
- * strictly alone, and that is not an oversight — it has been got wrong twice.
- *
- * Averaging the bounds shaves exactly the peaks they exist to preserve, undoing
- * `downsample`'s min/max folding one stage later.
- *
- * Folding them with a *rolling* min/max is worse. A rolling max is a
- * morphological dilation: one 2-second spike becomes a plateau as wide as the
- * window, so what should hug the line spreads into a skyline of rectangles.
- * That version existed to stop a per-bucket band alternating between
- * zero-width and open at 5 m; `aggregates()` now heads that off at the source
- * by not drawing extremes at all where a bucket holds fewer than five samples.
- *
- * The bounds reach the chart through `expandMinMax`, which needs them exactly
- * as the backend measured them.
- */
-export function smooth<T extends { timestamp: number }>(
-  data: T[],
-  window: number,
-): T[] {
-  if (data.length < 2 || window < 2) return data;
-  const half = Math.floor(window / 2);
-
-  // Pre-compute keys once so we don't hammer typeof inside the hot loop.
-  const sample = data[Math.floor(data.length / 2)] as Record<string, unknown>;
-  const meanKeys: string[] = [];
-  for (const k of Object.keys(sample)) {
-    if (typeof sample[k] !== 'number') continue;
-    if (k.endsWith(BAND_LO) || k.endsWith(BAND_HI)) continue;
-    meanKeys.push(k);
-  }
-  if (meanKeys.length === 0) return data;
-
-  const result: T[] = new Array(data.length);
-  // The last `half` points pass through unchanged so live spikes ride through
-  // to the chart's right edge without being diluted by a one-sided window. A
-  // centered rolling mean at the tail necessarily becomes asymmetric (there's
-  // no "future" to average with), which pulls the latest value back toward the
-  // past mean — exactly the "why doesn't my 100% spike show?" complaint.
-  const edgeFreezeFrom = Math.max(0, data.length - half);
-
-  for (let i = 0; i < data.length; i++) {
-    const start = Math.max(0, i - half);
-    const end = Math.min(data.length, i + half + 1);
-    const agg: Record<string, unknown> = { ...(data[i] as object) };
-
-    if (i < edgeFreezeFrom) {
-      for (const key of meanKeys) {
-        let sum = 0;
-        let count = 0;
-        for (let j = start; j < end; j++) {
-          const v = (data[j] as Record<string, unknown>)[key];
-          if (typeof v === 'number' && Number.isFinite(v)) {
-            sum += v;
-            count++;
-          }
-        }
-        if (count > 0) agg[key] = sum / count;
-      }
-    }
-
-    result[i] = agg as T;
   }
 
   return result;

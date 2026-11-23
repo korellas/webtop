@@ -18,7 +18,7 @@ export interface EchoSeries {
 interface ChartHoverEchoProps {
   /** Identity of the host chart, matched against the hover's owner. */
   chartId: string;
-  /** The rows this chart actually plots (post-downsample/smooth). */
+  /** The rows this chart actually plots after bucketing. */
   rows: Record<string, unknown>[];
   series: EchoSeries[];
 }

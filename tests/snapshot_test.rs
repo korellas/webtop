@@ -40,6 +40,7 @@ fn snapshot_serializes_to_json() {
         }],
         // Live samples carry no band — a single reading is its own extreme.
         band: None,
+        sample_count: None,
     };
     let json = serde_json::to_string(&snap).unwrap();
     assert!(json.contains("\"cpu_total\":42.5"));
